@@ -1,0 +1,6 @@
+{
+  "appId": "com.substracker.hub",
+  "appName": "SubsTracker Hub",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

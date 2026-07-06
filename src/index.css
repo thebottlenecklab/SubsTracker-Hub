@@ -1,0 +1,249 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+
+  /* High-end Gender-neutral Neutral range (Royal Forest Pine & Sage Alabaster) */
+  --color-slate-50: #F5F8F6;   /* Luxurious light sage-tinted alabaster background */
+  --color-slate-100: #EBF1ED;  /* Slightly deeper warm sage-sand tone for cards/badges */
+  --color-slate-150: #DEE6E1;  /* Soft warm spruce border color */
+  --color-slate-200: #D0DBD4;  /* Defined stone/spruce border */
+  --color-slate-300: #B8C7BF;  /* Hover state border */
+  --color-slate-400: #8CA397;  /* Muted metadata text */
+  --color-slate-500: #657F73;  /* Standard secondary text */
+  --color-slate-600: #526B5F;  /* Slate description text */
+  --color-slate-700: #3F544A;  /* Slightly dark text */
+  --color-slate-800: #293B33;  /* Body text (Saturated Forest Green) - highly readable but clearly green! */
+  --color-slate-900: #192620;  /* Elegant Pine Forest instead of black */
+  --color-slate-950: #0D1612;  /* Luxurious deepest spruce shadow/text */
+
+  /* High-end Moss & Sage Green (replaces bright greens/emeralds with rich boutique colors) */
+  --color-emerald-50: #F4F6F4;
+  --color-emerald-100: #E5ECE7;
+  --color-emerald-25: #FAFBF9;
+  --color-emerald-200: #CDDDD2;
+  --color-emerald-300: #A3BFAB;
+  --color-emerald-400: #749E82;
+  --color-emerald-500: #3E5F4A; /* Luxurious deep sage/moss green */
+  --color-emerald-600: #324D3B;
+  --color-emerald-700: #263C2E;
+  --color-emerald-800: #1C2E23;
+  --color-emerald-900: #121F17;
+  --color-emerald-950: #0A110D;
+
+  /* High-end Warm Bronze & Champagne Gold (replaces neon yellows/ambers) */
+  --color-amber-50: #FCFAF6;
+  --color-amber-100: #F7EFE1;
+  --color-amber-200: #ECDCC2;
+  --color-amber-300: #DDBF97;
+  --color-amber-400: #CBA26C;
+  --color-amber-500: #B38F5B; /* Premium muted brass/bronze */
+  --color-amber-600: #947447;
+  --color-amber-700: #765B35;
+  --color-amber-800: #574225;
+  --color-amber-900: #382914;
+  --color-amber-950: #1E1508;
+
+  /* High-end Terracotta & Coral Red (replaces bright signal red/rose) */
+  --color-rose-50: #FCFAF9;
+  --color-rose-100: #F7ECE9;
+  --color-rose-200: #F1D4CC;
+  --color-rose-300: #E7B2A3;
+  --color-rose-400: #D98976;
+  --color-rose-500: #C25B47; /* Luxurious matte terracotta crimson */
+  --color-rose-600: #A34936;
+  --color-rose-700: #813728;
+  --color-rose-800: #5E261A;
+  --color-rose-900: #3B160F;
+  --color-rose-950: #200B06;
+}
+
+/* Professional Polish Classes */
+.wireframe-border {
+  border: 1px solid #e2e8f0; /* border-slate-200 */
+  border-radius: 0.75rem; /* rounded-xl */
+}
+
+.wireframe-border-dashed {
+  border: 1px dashed #cbd5e1; /* border-slate-300 */
+  border-radius: 0.75rem; /* rounded-xl */
+}
+
+.wireframe-shadow {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.04), 0 4px 6px -4px rgb(0 0 0 / 0.04); /* shadow-md */
+  border-radius: 0.75rem;
+}
+
+.wireframe-shadow-sm {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.03), 0 2px 4px -2px rgb(0 0 0 / 0.03); /* shadow-sm */
+  border-radius: 0.75rem;
+}
+
+.wireframe-shadow-lg {
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.06), 0 8px 10px -6px rgb(0 0 0 / 0.06); /* shadow-lg */
+  border-radius: 0.75rem;
+}
+
+.wireframe-shadow-active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.03), 0 2px 4px -2px rgb(0 0 0 / 0.03);
+}
+
+.wireframe-shadow-click:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/* Smooth scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* HIGH-END MOOD THEMES SCRIPTS OVERRIDES */
+.theme-forest {
+  --color-slate-50: #F5F8F6;
+  --color-slate-100: #EBF1ED;
+  --color-slate-150: #DEE6E1;
+  --color-slate-200: #D0DBD4;
+  --color-slate-300: #B8C7BF;
+  --color-slate-400: #8CA397;
+  --color-slate-500: #657F73;
+  --color-slate-600: #526B5F;
+  --color-slate-700: #3F544A;
+  --color-slate-800: #293B33;
+  --color-slate-900: #192620;
+  --color-slate-950: #0D1612;
+
+  --color-emerald-500: #3E5F4A;
+  --color-emerald-600: #324D3B;
+  --color-emerald-700: #263C2E;
+}
+
+.theme-burgundy {
+  --color-slate-50: #FCFAF9;
+  --color-slate-100: #F5EBE9;
+  --color-slate-150: #EADCD9;
+  --color-slate-200: #DECCCC;
+  --color-slate-300: #CBB2B2;
+  --color-slate-400: #AA8888;
+  --color-slate-500: #8C6666;
+  --color-slate-600: #745050;
+  --color-slate-700: #5D3D3D;
+  --color-slate-800: #462A2A;
+  --color-slate-900: #2F1B1B;
+  --color-slate-950: #1C0F0F;
+
+  --color-emerald-500: #8E3E3E;
+  --color-emerald-600: #743232;
+  --color-emerald-700: #5C2626;
+}
+
+.theme-navy {
+  --color-slate-50: #F4F7FC;
+  --color-slate-100: #E8EEF7;
+  --color-slate-150: #D8E2F0;
+  --color-slate-200: #C9D6E8;
+  --color-slate-300: #B2C4DD;
+  --color-slate-400: #8CA2C4;
+  --color-slate-500: #657FA8;
+  --color-slate-600: #506A91;
+  --color-slate-700: #3D5377;
+  --color-slate-800: #283A5A;
+  --color-slate-900: #17243B;
+  --color-slate-950: #0E1624;
+
+  --color-emerald-500: #3B5B8C;
+  --color-emerald-600: #2E476F;
+  --color-emerald-700: #223554;
+}
+
+.theme-terracotta {
+  --color-slate-50: #FDFBFA;
+  --color-slate-100: #F7EFEA;
+  --color-slate-150: #EBE0D7;
+  --color-slate-200: #DFCEC2;
+  --color-slate-300: #CBB1A1;
+  --color-slate-400: #AA8B78;
+  --color-slate-500: #8C6D5B;
+  --color-slate-600: #755948;
+  --color-slate-700: #5F4637;
+  --color-slate-800: #463124;
+  --color-slate-900: #2E2017;
+  --color-slate-950: #1B120C;
+
+  --color-emerald-500: #B36B4D;
+  --color-emerald-600: #93563C;
+  --color-emerald-700: #75422D;
+}
+
+.theme-amethyst {
+  --color-slate-50: #FAF7FC;
+  --color-slate-100: #F1ECF5;
+  --color-slate-150: #E4DCEB;
+  --color-slate-200: #D7CDDF;
+  --color-slate-300: #C0B2CB;
+  --color-slate-400: #A08CAA;
+  --color-slate-500: #816E8C;
+  --color-slate-600: #6B5B75;
+  --color-slate-700: #55465D;
+  --color-slate-800: #3E3146;
+  --color-slate-900: #271E2E;
+  --color-slate-950: #17111B;
+
+  --color-emerald-50: #FAF7FC;
+  --color-emerald-500: #7B4A8E;
+  --color-emerald-600: #623A72;
+  --color-emerald-700: #4C2D59;
+}
+
+/* Simulated High-Fidelity Mobile Preview Custom Styles */
+@media (min-width: 640px) {
+  /* Override min-h-screen and h-screen for child screens inside the mobile chassis */
+  .phone-screen-container .min-h-screen {
+    min-height: 100% !important;
+    height: auto !important;
+  }
+  
+  .phone-screen-container .h-screen {
+    height: 100% !important;
+  }
+  
+  /* Hide default thick scrollbars and replace with ultra-thin iOS-like scrollbars */
+  .phone-screen-container * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+  }
+  
+  .phone-screen-container *::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .phone-screen-container *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .phone-screen-container *::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 9999px;
+  }
+  
+  .phone-screen-container *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.2);
+  }
+}
+

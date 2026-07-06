@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "409244064662",
+    "project_id": "substracker-31427",
+    "storage_bucket": "substracker-31427.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:409244064662:android:0e159fc0518adc1d295bb7",
+        "android_client_info": {
+          "package_name": "com.substracker.hub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "409244064662-665g3ekdevig3mncuel7jgjfqhl83aba.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAk4dr3lfLlSGWsebYOK-5WON1EkKYwgzg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "409244064662-665g3ekdevig3mncuel7jgjfqhl83aba.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

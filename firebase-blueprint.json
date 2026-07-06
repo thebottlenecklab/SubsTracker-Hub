@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with premium status, onboarding, default currency, and selected categories",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "isPremium": { "type": "boolean" },
+        "onboarded": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "selectedCategories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "currency": { "type": "string" },
+        "theme": { "type": "string" }
+      },
+      "required": ["uid", "isPremium", "onboarded", "createdAt"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "A recurring payment tracking record manually added by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "billingCycle": { "type": "string", "enum": ["weekly", "monthly", "quarterly", "yearly"] },
+        "nextChargeDate": { "type": "string" },
+        "isFreeTrial": { "type": "boolean" },
+        "freeTrialEndDate": { "type": "string" },
+        "reminderTiming": { "type": "string" },
+        "category": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused", "canceled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "name", "amount", "billingCycle", "nextChargeDate", "isFreeTrial", "reminderTiming", "category", "status", "createdAt"]
+    },
+    "FCMToken": {
+      "title": "FCMToken",
+      "description": "An FCM registration token for sending push notifications to an Android device",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "deviceModel": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["token", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile configuration document"
+    },
+    "/users/{userId}/subscriptions/{subscriptionId}": {
+      "schema": "Subscription",
+      "description": "User's tracked subscriptions"
+    },
+    "/users/{userId}/fcmTokens/{tokenId}": {
+      "schema": "FCMToken",
+      "description": "User's registered Android FCM notification tokens"
+    }
+  }
+}
