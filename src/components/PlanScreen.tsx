@@ -4,7 +4,7 @@ import { PLAN_COMPARISON } from "../data";
 import { Check, X, ShieldCheck, CreditCard, ChevronRight } from "lucide-react";
 
 export default function PlanScreen() {
-  const { unlockPremium, setScreen, profile, setProfileField } = useApp();
+  const { unlockPremium, setScreen, profile, setProfileField, paymentError, clearSandboxParams } = useApp();
 
   const handleStartFree = async () => {
     // If user chooses free plan, just proceed to onboarding
@@ -18,7 +18,10 @@ export default function PlanScreen() {
       <div className="flex items-center justify-between pt-2">
         <button
           id="plan-back-btn"
-          onClick={() => setScreen("auth")}
+          onClick={() => {
+            clearSandboxParams();
+            setScreen("auth");
+          }}
           className="text-xs font-mono font-bold text-slate-600 hover:text-slate-950 hover:underline cursor-pointer"
         >
           ← Back
@@ -28,6 +31,24 @@ export default function PlanScreen() {
 
       {/* Main Container */}
       <div className="my-auto py-4 max-w-sm mx-auto w-full">
+        {paymentError && (
+          <div className="bg-rose-50 text-rose-700 p-3.5 mb-4 border border-rose-200 text-[11px] font-sans rounded-xl flex items-start gap-1.5 relative animate-fade-in shadow-xs">
+            <div className="flex-1">
+              <strong className="font-bold">Checkout Attempt Failed:</strong>
+              <p className="mt-1 font-mono text-[10px] bg-white/50 p-2 rounded-lg border border-rose-100 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                {paymentError}
+              </p>
+            </div>
+            <button 
+              onClick={() => clearSandboxParams()} 
+              className="text-rose-900 hover:text-slate-950 font-bold cursor-pointer ml-1 text-sm leading-none"
+              title="Dismiss error"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <div className="text-center mb-5">
           <h2 className="font-display text-2xl font-bold tracking-tight text-slate-950 uppercase">
             Choose Your Plan

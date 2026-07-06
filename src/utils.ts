@@ -155,9 +155,9 @@ export function formatReadableDate(dateString: string): string {
 }
 
 /**
- * Exports a list of subscriptions as a CSV file.
+ * Exports a list of subscriptions as a CSV file and returns the CSV content string.
  */
-export function downloadCSV(subscriptions: Subscription[]) {
+export function downloadCSV(subscriptions: Subscription[]): string {
   const headers = [
     "Service Name",
     "Amount",
@@ -187,15 +187,21 @@ export function downloadCSV(subscriptions: Subscription[]) {
     ...rows.map(e => e.join(","))
   ].join("\n");
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-  link.style.visibility = "hidden";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  try {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (e) {
+    console.warn("Standard CSV file download blocked or not supported in this environment:", e);
+  }
+
+  return csvContent;
 }
 
 export interface MonthlySpendItem {

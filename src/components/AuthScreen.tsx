@@ -138,17 +138,33 @@ export default function AuthScreen() {
     setError(null);
     setLoading(true);
     try {
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      if (isMobile) {
-        setError("Redirecting you to Google Sign-In...");
-      }
       await signInWithGoogle();
     } catch (err: any) {
       console.error(err);
-      if (err.code === "auth/popup-blocked") {
-        setError("Sign-in popup was blocked. Redirecting you to Google Sign-In instead...");
+      if (
+        err.code === "auth/popup-blocked" || 
+        err.code === "auth/cancelled-popup-request" ||
+        (err.message && (err.message.includes("popup-blocked") || err.message.includes("cancelled-popup-request")))
+      ) {
+        setError(
+          <div className="flex flex-col gap-2 font-sans text-xs text-left">
+            <span className="font-bold text-amber-800">Google Sign-In Popup Blocked</span>
+            <p className="text-slate-600 leading-normal">
+              Your mobile or desktop browser blocked the sign-in popup window. 
+            </p>
+            <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 flex flex-col gap-1 text-[11px] text-slate-700 font-mono">
+              <span className="font-bold text-slate-900">How to authorize Google Sign-In:</span>
+              <span>1. Look for the blocked popup icon/setting in your browser's address bar or menu.</span>
+              <span>2. Select <strong>Always Allow Pop-ups</strong> for this site.</span>
+              <span>3. Click <strong>Continue with Google</strong> again to sign in!</span>
+            </div>
+            <p className="text-slate-500 text-[10px] italic mt-0.5">
+              Note: Popups are fully supported on mobile Safari & Chrome but require one-click user consent.
+            </p>
+          </div>
+        );
       } else if (err.code === "auth/popup-closed-by-user") {
-        setError("Google Sign-In was cancelled. Try again or check your browser redirects.");
+        setError("Google Sign-In popup was closed before completion. Please try again.");
       } else if (err.code === "auth/unauthorized-domain" || (err.message && err.message.includes("unauthorized-domain"))) {
         const currentHost = window.location.hostname;
         setError(

@@ -59,6 +59,9 @@ interface AppContextType {
   setPaymentSuccess: (val: boolean) => void;
   stripeCheckoutUrl: string | null;
   setStripeCheckoutUrl: (url: string | null) => void;
+  paymentError: string | null;
+  stripeCheckoutSessionId: string | null;
+  setPaymentError: (val: string | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -82,6 +85,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
   const [paymentCancel, setPaymentCancel] = useState<boolean>(false);
   const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [stripeCheckoutSessionId, setStripeCheckoutSessionId] = useState<string | null>(null);
 
   // Check URL query parameters for payments/sandbox checkout
   useEffect(() => {
@@ -111,6 +116,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPaymentSuccess(false);
     setPaymentCancel(false);
     setStripeSandboxSession(null);
+    setPaymentError(null);
+    setStripeCheckoutSessionId(null);
     // Clean up URL query parameters
     const url = new URL(window.location.href);
     url.searchParams.delete("stripe_sandbox");
@@ -491,15 +498,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("substracker_local_only");
     const provider = new GoogleAuthProvider();
     
-    // Check if we are on mobile or in an environment where popups are frequently blocked/unsupported
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    if (isMobile) {
-      console.log("Mobile device detected, using redirect sign-in");
-      localStorage.setItem("substracker_google_redirect_initiated", "true");
-      await signInWithRedirect(auth, provider);
-      return;
-    }
+    // Force prompt on Google Sign-In to let users choose/switch accounts easily
+    provider.setCustomParameters({
+      prompt: "select_account"
+    });
 
     try {
       const credentials = await signInWithPopup(auth, provider);
@@ -514,19 +516,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setScreen("onboarding");
       }
     } catch (popupError: any) {
-      console.warn("Popup sign-in failed/blocked, attempting redirect sign-in:", popupError);
-      if (
-        popupError.code === "auth/popup-blocked" || 
-        popupError.code === "auth/popup-closed-by-user" || 
-        popupError.code === "auth/cancelled-popup-request" ||
-        /popup/i.test(popupError.message) ||
-        /window/i.test(popupError.message)
-      ) {
-        localStorage.setItem("substracker_google_redirect_initiated", "true");
-        await signInWithRedirect(auth, provider);
-      } else {
-        throw popupError;
-      }
+      console.warn("Popup sign-in failed/blocked:", popupError);
+      throw popupError;
     }
   };
 
@@ -571,6 +562,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currency: getAutoDetectedCurrency()
     };
     
+    setPaymentError(null);
+    setStripeCheckoutSessionId(null);
+    
     try {
       const response = await fetch("/api/stripe/create-checkout-session", {
         method: "POST",
@@ -603,25 +597,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         // External redirect for real Stripe
         if (urlStr) {
-          // Set state to show the secure overlay modal so the user can easily open it in a new tab if needed
           setStripeCheckoutUrl(urlStr);
+          setStripeCheckoutSessionId(session.id);
           
-          // Attempt immediate top-level breakout
-          try {
-            if (window.top && window.top !== window.self) {
-              window.top.location.href = urlStr;
-            } else {
+          const isIframe = window.self !== window.top;
+          const isMobileOrCapacitor = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window as any).Capacitor !== undefined;
+          
+          if (!isIframe && !isMobileOrCapacitor) {
+            // Only perform automatic silent redirection if NOT in an iframe AND NOT on mobile/Capacitor
+            try {
               window.location.href = urlStr;
+            } catch (e) {
+              console.warn("Direct navigation failed. Falling back to checkout choice modal.", e);
             }
-          } catch (e) {
-            console.warn("Top-level navigation failed or blocked by iframe. Falling back to checkout choice modal.", e);
           }
         }
       } else {
-        console.error("Failed to create Stripe Session");
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData.error || "Failed to create Stripe Checkout session. Please check your Stripe configurations or try again later.";
+        console.error("Stripe Checkout error:", msg);
+        setPaymentError(msg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating stripe checkout:", err);
+      setPaymentError(err.message || "A network error occurred. Please check your internet connection and try again.");
     }
   };
 
@@ -787,6 +786,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setPaymentSuccess,
         stripeCheckoutUrl,
         setStripeCheckoutUrl,
+        paymentError,
+        stripeCheckoutSessionId,
+        setPaymentError,
       }}
     >
       {children}

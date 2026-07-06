@@ -118,6 +118,22 @@ async function startServer() {
   });
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+  // API Route to directly echo and prompt native file downloads (bypassing sandbox / iframe limitations)
+  app.post("/api/export-csv", (req, res) => {
+    try {
+      const { csvData, filename } = req.body;
+      const safeFilename = filename || `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"`);
+      res.send(csvData || "");
+    } catch (err: any) {
+      console.error("Error in server-side export CSV:", err);
+      res.status(500).send("Error exporting CSV");
+    }
+  });
 
   // API Route to send a test FCM push notification manually
   app.post("/api/notifications/send", async (req, res) => {

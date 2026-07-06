@@ -26,6 +26,8 @@ export default function SettingsScreen() {
   const [showImportArea, setShowImportArea] = useState<boolean>(false);
   const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [exportSuccess, setExportSuccess] = useState<boolean>(false);
+  const [csvContent, setCsvContent] = useState<string | null>(null);
+  const [csvCopied, setCsvCopied] = useState<boolean>(false);
 
   const handleCopyBackup = () => {
     const jsonStr = exportLocalData();
@@ -35,7 +37,45 @@ export default function SettingsScreen() {
   };
 
   const handleCsvDownload = () => {
-    downloadCSV(subscriptions);
+    const csvStr = downloadCSV(subscriptions);
+    setCsvContent(csvStr);
+    
+    // Copy to clipboard for easy pasting as a fallback
+    try {
+      navigator.clipboard.writeText(csvStr);
+      setCsvCopied(true);
+      setTimeout(() => setCsvCopied(false), 3000);
+    } catch (err) {
+      console.warn("Failed to copy CSV to clipboard automatically:", err);
+    }
+
+    // Programmatically create and submit a form to trigger native device download via Express backend.
+    // Since the server returns the CSV file with "Content-Disposition: attachment", the browser
+    // will trigger a native download prompt directly on the user's mobile or desktop device
+    // without redirecting or reloading the page.
+    try {
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "/api/export-csv";
+      
+      const csvInput = document.createElement("input");
+      csvInput.type = "hidden";
+      csvInput.name = "csvData";
+      csvInput.value = csvStr;
+      form.appendChild(csvInput);
+
+      const filenameInput = document.createElement("input");
+      filenameInput.type = "hidden";
+      filenameInput.name = "filename";
+      filenameInput.value = `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`;
+      form.appendChild(filenameInput);
+
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+    } catch (err) {
+      console.error("Failed to programmatically submit CSV download form:", err);
+    }
   };
 
   const handleImportSubmit = (e: React.FormEvent) => {
@@ -275,9 +315,50 @@ export default function SettingsScreen() {
               className="bg-slate-50 border border-slate-200 text-slate-700 py-2 px-1.5 font-mono text-[10px] font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
             >
               <FileText size={11} />
-              Export CSV Ledger
+              {csvCopied ? "CSV Copied!" : "Export CSV Ledger"}
             </button>
           </div>
+
+          {csvContent && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-1 flex flex-col gap-2 animate-fade-in text-[11px] relative">
+              <button 
+                type="button"
+                onClick={() => setCsvContent(null)}
+                className="absolute top-2 right-2.5 text-slate-400 hover:text-slate-700 font-bold font-mono text-xs cursor-pointer"
+                title="Hide CSV"
+              >
+                ✕
+              </button>
+              <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-0.5">
+                <Check className="text-emerald-600 animate-pulse" size={13} />
+                <span>CSV Ledger Ready & Copied!</span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
+                Due to phone/sandbox constraints, standard downloads may be blocked. The CSV table data is copied to your clipboard to paste into Google Sheets or Excel. You can also manually copy below:
+              </p>
+              <textarea
+                readOnly
+                value={csvContent}
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                className="w-full h-24 bg-white border border-slate-200 rounded-lg p-2 font-mono text-[9px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-900 resize-none cursor-text shadow-xs"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    navigator.clipboard.writeText(csvContent);
+                    setCsvCopied(true);
+                    setTimeout(() => setCsvCopied(false), 3000);
+                  } catch (e) {
+                    console.error("Failed to copy", e);
+                  }
+                }}
+                className="self-end px-3 py-1 bg-slate-900 text-white font-mono text-[9px] rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                {csvCopied ? "Copied to Clipboard!" : "Copy Raw CSV"}
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <button

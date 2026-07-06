@@ -44,8 +44,13 @@ function AppContent() {
     clearSandboxParams,
     profile,
     stripeCheckoutUrl,
-    setStripeCheckoutUrl
+    setStripeCheckoutUrl,
+    stripeCheckoutSessionId,
+    verifyStripeSession
   } = useApp();
+
+  const [verifying, setVerifying] = React.useState(false);
+  const [verificationResult, setVerificationResult] = React.useState<string | null>(null);
 
   if (loading) {
     return (
@@ -207,8 +212,8 @@ function AppContent() {
           {/* Secure Stripe Checkout Iframe-Breakout Modal */}
           {stripeCheckoutUrl && (
             <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-fade-in">
-              <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-slate-100 flex flex-col items-center text-center animate-scale-up">
-                <div className="h-14 w-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 ring-8 ring-emerald-50/50">
+              <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-slate-100 flex flex-col items-center text-center animate-scale-up max-h-[90vh] overflow-y-auto">
+                <div className="h-14 w-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 ring-8 ring-emerald-50/50 shrink-0">
                   <CreditCard size={28} className="animate-pulse" />
                 </div>
                 
@@ -217,51 +222,86 @@ function AppContent() {
                   We've initialized Stripe Checkout for your Premium upgrade.
                 </p>
                 
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 my-4 text-left w-full flex gap-3">
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 my-4 text-left w-full flex gap-3 shrink-0">
                   <ShieldCheck className="text-emerald-600 shrink-0 mt-0.5" size={16} />
                   <p className="text-[11px] leading-relaxed text-slate-600 font-sans">
-                    Since the preview is running inside a secure sandbox iframe, please choose <strong>Open in New Tab</strong> to complete your purchase securely on Stripe.
+                    Since the app is running in a sandbox or mobile environment, please use the button below to complete your checkout securely in a browser window.
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-2.5 w-full mt-2">
-                  <a 
-                    href={stripeCheckoutUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <div className="flex flex-col gap-2.5 w-full mt-1">
+                  {/* Bulletproof External Browser opener */}
+                  <button 
                     onClick={() => {
-                      // Automatically dismiss modal shortly after click so they can see success state if they return
-                      setTimeout(() => setStripeCheckoutUrl(null), 1500);
+                      const isCapacitor = (window as any).Capacitor !== undefined;
+                      if (isCapacitor) {
+                        try {
+                          window.open(stripeCheckoutUrl, "_system");
+                        } catch (e) {
+                          window.open(stripeCheckoutUrl, "_blank");
+                        }
+                      } else {
+                        window.open(stripeCheckoutUrl, "_blank");
+                      }
                     }}
                     className="w-full py-3 bg-slate-900 text-white font-sans text-xs font-bold rounded-xl shadow-lg hover:bg-slate-850 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer text-center"
                   >
                     <ExternalLink size={14} />
-                    Open Checkout in New Tab
-                  </a>
+                    Open Stripe Checkout
+                  </button>
+
+                  {/* Manual verification fallback button */}
+                  {stripeCheckoutSessionId && (
+                    <button
+                      disabled={verifying}
+                      onClick={async () => {
+                        setVerifying(true);
+                        setVerificationResult(null);
+                        try {
+                          // Call the API endpoint to check status
+                          const response = await fetch(`/api/stripe/session-status/${stripeCheckoutSessionId}`);
+                          if (response.ok) {
+                            const data = await response.json();
+                            if (data.payment_status === "paid") {
+                              // Let AppContext process and apply the grant!
+                              await verifyStripeSession(stripeCheckoutSessionId);
+                              setStripeCheckoutUrl(null);
+                              setVerificationResult(null);
+                            } else {
+                              setVerificationResult("Verification Response: Stripe reports payment is still pending or unpaid. Please complete payment first.");
+                            }
+                          } else {
+                            const errorData = await response.json().catch(() => ({}));
+                            setVerificationResult(`Server check failed: ${errorData.error || "Unrecognized server state"}`);
+                          }
+                        } catch (e: any) {
+                          setVerificationResult(`Network error: ${e.message || "Failed to contact gateway backend."}`);
+                        } finally {
+                          setVerifying(false);
+                        }
+                      }}
+                      className="w-full py-3 bg-emerald-600 text-white font-sans text-xs font-bold rounded-xl shadow-md hover:bg-emerald-700 disabled:opacity-50 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer text-center"
+                    >
+                      {verifying ? (
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent animate-spin rounded-full"></div>
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      {verifying ? "Checking Stripe Status..." : "Verify Payment & Activate"}
+                    </button>
+                  )}
+
+                  {verificationResult && (
+                    <p className="text-[10px] text-slate-600 font-mono bg-amber-50 border border-amber-100 p-2.5 rounded-xl text-left w-full leading-normal animate-fade-in whitespace-pre-wrap">
+                      {verificationResult}
+                    </p>
+                  )}
                   
                   <button
                     onClick={() => {
-                      try {
-                        if (window.top && window.top !== window.self) {
-                          // Try top level navigation
-                          window.top.location.href = stripeCheckoutUrl;
-                        } else {
-                          window.location.href = stripeCheckoutUrl;
-                        }
-                      } catch (e) {
-                        console.error("Top-level redirect blocked by iframe sandbox:", e);
-                        // Instead of forcing window.location.href inside the iframe which will freeze/get blocked by Stripe frame protection,
-                        // we alert the user that the action is blocked by the container sandbox.
-                        alert("Navigation blocked by the AI Studio preview iframe sandbox. Please use 'Open Checkout in New Tab' to bypass iframe restrictions.");
-                      }
+                      setStripeCheckoutUrl(null);
+                      setVerificationResult(null);
                     }}
-                    className="w-full py-2.5 bg-slate-100 text-slate-700 font-sans text-xs font-medium rounded-xl hover:bg-slate-200 transition cursor-pointer"
-                  >
-                    Redirect in This Tab (May be blocked in Sandbox)
-                  </button>
-                  
-                  <button
-                    onClick={() => setStripeCheckoutUrl(null)}
                     className="mt-1 text-[11px] font-sans text-slate-400 hover:text-slate-600 hover:underline cursor-pointer"
                   >
                     Cancel & Go Back
