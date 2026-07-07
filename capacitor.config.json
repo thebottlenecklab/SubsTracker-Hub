@@ -2,5 +2,12 @@
   "appId": "com.substracker.hub",
   "appName": "SubsTracker Hub",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["email", "profile"],
+      "clientId": "409244064662-665g3ekdevig3mncuel7jgjfqhl83aba.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": false
+    }
+  }
 }
