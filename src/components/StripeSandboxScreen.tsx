@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { ShieldCheck, CreditCard, Lock, ChevronLeft, AlertCircle, Sparkles, CheckCircle2 } from "lucide-react";
+import { getApiUrl } from "../utils";
 
 export default function StripeSandboxScreen() {
   const { stripeSandboxSession, profile, clearSandboxParams, verifyStripeSession, setPaymentCancel, setPaymentSuccess, setScreen } = useApp();
@@ -89,7 +90,7 @@ export default function StripeSandboxScreen() {
     }
 
     try {
-      const res = await fetch("/api/stripe/sandbox-complete", {
+      const res = await fetch(getApiUrl("/api/stripe/sandbox-complete"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: stripeSandboxSession }),

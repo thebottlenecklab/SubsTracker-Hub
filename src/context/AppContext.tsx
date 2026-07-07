@@ -1,10 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { onAuthStateChanged, User, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { onAuthStateChanged, User, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential } from "firebase/auth";
 import { doc, collection, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { setupPushNotifications } from "../lib/pushNotifications";
 import { Subscription, UserProfile, ReminderNotification } from "../types";
-import { getAutoDetectedCurrency } from "../utils";
+import { getAutoDetectedCurrency, getApiUrl } from "../utils";
+import { Capacitor } from "@capacitor/core";
+import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
+
+// Initialize GoogleAuth on native platforms
+if (Capacitor.isNativePlatform()) {
+  try {
+    GoogleAuth.initialize();
+  } catch (err) {
+    console.warn("GoogleAuth initialize error:", err);
+  }
+}
 
 // Helper function to remove undefined properties recursively
 const removeUndefined = (obj: any): any => {
@@ -129,7 +140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Verify Stripe Session status via our Express backend
   const verifyStripeSession = async (sessId: string) => {
     try {
-      const response = await fetch(`/api/stripe/session-status/${sessId}`);
+      const response = await fetch(getApiUrl(`/api/stripe/session-status/${sessId}`));
       if (response.ok) {
         const data = await response.json();
         if (data.payment_status === "paid") {
@@ -496,6 +507,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     localStorage.removeItem("substracker_local_only");
+
+    // 1. If running on a native platform (Android/iOS app), use native Capacitor GoogleAuth
+    if (Capacitor.isNativePlatform()) {
+      try {
+        console.log("[Google Auth] Initiating native Google Sign-In via Capacitor...");
+        const result = (await GoogleAuth.signIn()) as any;
+        const idToken = result?.authentication?.idToken || result?.idToken;
+        if (!idToken) {
+          throw new Error("No ID Token returned from native Google Sign-In.");
+        }
+        
+        const credential = GoogleAuthProvider.credential(idToken);
+        const credentials = await signInWithCredential(auth, credential);
+        
+        // Fetch profile to check onboarding
+        const userDocRef = doc(db, "users", credentials.user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists() && (userDoc.data() as UserProfile).onboarded) {
+          setScreen("dashboard");
+          setActiveTab("home");
+        } else {
+          setScreen("onboarding");
+        }
+        return;
+      } catch (nativeErr: any) {
+        console.error("[Google Auth] Native Google Sign-In failed:", nativeErr);
+        throw nativeErr;
+      }
+    }
+
+    // 2. Otherwise, fall back to the standard web provider with signInWithPopup
     const provider = new GoogleAuthProvider();
     
     // Force prompt on Google Sign-In to let users choose/switch accounts easily
@@ -566,7 +608,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStripeCheckoutSessionId(null);
     
     try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
+      const response = await fetch(getApiUrl("/api/stripe/create-checkout-session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

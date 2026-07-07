@@ -65,10 +65,64 @@ function getFirebaseAdmin(): any {
 
 // Lazy-initialized Stripe instance
 let stripe: Stripe | null = null;
+let currentActiveSecretKey: string | null = null;
+
 function getStripeInstance(): Stripe | null {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (secretKey && !stripe) {
-    stripe = new Stripe(secretKey);
+  let secretKey: string | null = null;
+
+  // 1. Read directly from .env to see if user has uncommented STRIPE_SECRET_KEY
+  try {
+    const envPath = path.join(process.cwd(), ".env");
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, "utf8");
+      const lines = envContent.split(/\r?\n/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        // Match only UNCOMMENTED lines starting with STRIPE_SECRET_KEY=
+        if (trimmed.startsWith("STRIPE_SECRET_KEY=")) {
+          const match = trimmed.match(/^STRIPE_SECRET_KEY=["']?(.*?)["']?$/);
+          if (match && match[1]) {
+            secretKey = match[1];
+            break;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Stripe Config] Error parsing .env directly:", err);
+  }
+
+  // 2. If STRIPE_SECRET_KEY was not found active (uncommented) in .env, load from stripe-test-keys.json
+  if (!secretKey) {
+    try {
+      const testKeysPath = path.join(process.cwd(), "stripe-test-keys.json");
+      if (fs.existsSync(testKeysPath)) {
+        const testKeysContent = fs.readFileSync(testKeysPath, "utf8");
+        const parsed = JSON.parse(testKeysContent);
+        if (parsed && parsed.STRIPE_SECRET_KEY) {
+          secretKey = parsed.STRIPE_SECRET_KEY;
+        }
+      }
+    } catch (err) {
+      console.error("[Stripe Config] Error reading stripe-test-keys.json fallback:", err);
+    }
+  }
+
+  // 3. Fallback to process.env if still not set
+  if (!secretKey) {
+    secretKey = process.env.STRIPE_SECRET_KEY || null;
+  }
+
+  if (secretKey) {
+    // If stripe instance is not yet initialized, or the key has changed, re-initialize it
+    if (!stripe || currentActiveSecretKey !== secretKey) {
+      stripe = new Stripe(secretKey);
+      currentActiveSecretKey = secretKey;
+      console.log(`[Stripe Config] Initialized Stripe instance with key starting with: ${secretKey.slice(0, 7)}...`);
+    }
+  } else {
+    stripe = null;
+    currentActiveSecretKey = null;
   }
   return stripe;
 }
@@ -302,7 +356,26 @@ async function startServer() {
   app.post("/api/stripe/create-checkout-session", async (req, res) => {
     try {
       const { userId, userEmail, appUrl } = req.body;
-      const hostUrl = appUrl || process.env.APP_URL || `http://localhost:${PORT}`;
+      let hostUrl = appUrl || process.env.APP_URL || `http://localhost:${PORT}`;
+
+      // If requested from a mobile wrapper APK or local-only scheme (capacitor://, file://, localhost, etc.)
+      // replace hostUrl with the public Cloud Run server's HTTPS URL to ensure Stripe doesn't crash on invalid redirect schemes,
+      // and redirecting works smoothly inside the default web browser.
+      if (
+        !hostUrl ||
+        hostUrl.startsWith("http://localhost") ||
+        hostUrl.startsWith("capacitor://") ||
+        hostUrl.startsWith("file://") ||
+        hostUrl.startsWith("http://127.0.0.1") ||
+        hostUrl.startsWith("ionic://") ||
+        hostUrl.startsWith("chrome-extension://")
+      ) {
+        const reqHost = req.get("host");
+        if (reqHost) {
+          const isSecure = req.secure || req.headers["x-forwarded-proto"] === "https";
+          hostUrl = `${isSecure ? "https" : "http"}://${reqHost}`;
+        }
+      }
 
       const stripeInstance = getStripeInstance();
 

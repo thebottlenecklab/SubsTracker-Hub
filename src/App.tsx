@@ -13,7 +13,7 @@ import DetailsScreen from "./components/DetailsScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import MetricsScreen from "./components/MetricsScreen";
 import BottomNav from "./components/BottomNav";
-import { CheckCircle2, AlertTriangle, X, ShieldAlert, Sparkles, CreditCard, ExternalLink, ShieldCheck } from "lucide-react";
+import { CheckCircle2, AlertTriangle, X, ShieldAlert, Sparkles, CreditCard, ExternalLink, ShieldCheck, Info } from "lucide-react";
 
 function StatusBarTime() {
   const [time, setTime] = React.useState("9:41");
@@ -222,11 +222,20 @@ function AppContent() {
                   We've initialized Stripe Checkout for your Premium upgrade.
                 </p>
                 
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 my-4 text-left w-full flex gap-3 shrink-0">
-                  <ShieldCheck className="text-emerald-600 shrink-0 mt-0.5" size={16} />
-                  <p className="text-[11px] leading-relaxed text-slate-600 font-sans">
-                    Since the app is running in a sandbox or mobile environment, please use the button below to complete your checkout securely in a browser window.
-                  </p>
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 my-4 text-left w-full flex flex-col gap-2.5 shrink-0">
+                  <div className="flex gap-3">
+                    <ShieldCheck className="text-emerald-600 shrink-0 mt-0.5" size={16} />
+                    <p className="text-[11px] leading-relaxed text-slate-600 font-sans">
+                      Complete your checkout securely in the new browser window.
+                    </p>
+                  </div>
+                  <div className="border-t border-slate-200/60 pt-2.5 flex gap-3">
+                    <Info className="text-amber-600 shrink-0 mt-0.5" size={16} />
+                    <p className="text-[10px] leading-relaxed text-amber-700 font-sans">
+                      <span className="font-semibold block mb-0.5 text-amber-800">Sandbox Preview Notice:</span>
+                      Since the app runs in a secure sandbox, the redirect tab might show a <strong className="font-bold">403 Forbidden</strong> error. This is normal! Simply close that tab, return here, and click <strong className="font-bold text-amber-800">Verify Payment & Activate</strong> below to instantly unlock Premium!
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2.5 w-full mt-1">

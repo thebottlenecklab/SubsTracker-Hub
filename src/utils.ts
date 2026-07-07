@@ -1,6 +1,26 @@
 import { Subscription, BillingCycle } from "./types";
 
 /**
+ * Resolves a full absolute API endpoint URL when running inside a native/Capacitor context,
+ * otherwise returns the relative path for standard web browsers.
+ */
+export function getApiUrl(path: string): string {
+  const isCapacitor = (window as any).Capacitor !== undefined || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const isLocalHost = window.location.origin.startsWith("http://localhost") || 
+                      window.location.origin.startsWith("capacitor://") || 
+                      window.location.origin.startsWith("file://");
+
+  if (isCapacitor && isLocalHost) {
+    // Read the configured VITE_APP_URL, defaulting to the Cloud Run server URL
+    const configuredUrl = (import.meta as any).env?.VITE_APP_URL || "https://ais-dev-jerhpn5r5lku2paxzqvrxn-472595336040.us-east1.run.app";
+    const base = configuredUrl.endsWith("/") ? configuredUrl.slice(0, -1) : configuredUrl;
+    const formattedPath = path.startsWith("/") ? path : `/${path}`;
+    return `${base}${formattedPath}`;
+  }
+  return path;
+}
+
+/**
  * Dynamically detects currency from the user's browser location / locale settings.
  */
 export function getAutoDetectedCurrency(): string {
