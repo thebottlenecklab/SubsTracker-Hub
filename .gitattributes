@@ -1,0 +1,6 @@
+# Ensure binary files are treated as binary and not modified
+*.jar binary
+*.png binary
+*.gif binary
+*.jpg binary
+*.jpeg binary
