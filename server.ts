@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, doc, updateDoc, collection, getDocs, collectionGroup, query, where } from "firebase/firestore";
@@ -456,7 +455,7 @@ async function startServer() {
       }
     } catch (error: any) {
       console.error("Error retrieving checkout session:", error);
-      res.status(500).json({ error: error.message });
+      res.status(error.statusCode || 500).json({ error: error.message });
     }
   });
 
@@ -475,8 +474,9 @@ async function startServer() {
 
   // Serve static files in production, or mount Vite dev server in development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, watch: { ignored: ["**/android/**"] } },
       appType: "spa",
     });
     app.use(vite.middlewares);
