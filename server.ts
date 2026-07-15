@@ -133,6 +133,19 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Allow cross-origin requests from the native Android/iOS app, which serves its bundled
+  // WebView content from https://localhost or capacitor://localhost — a different origin
+  // than this API, so without these headers the browser blocks every fetch() with a CORS error.
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   // Stripe Webhook Endpoint (Must be defined BEFORE app.use(express.json()) to receive raw body)
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     const sig = req.headers["stripe-signature"];

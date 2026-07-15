@@ -46,6 +46,7 @@ export default function MetricsScreen() {
   const [selectedYear, setSelectedYear] = useState<number>(2026);
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(5); // Default to June (index 5)
   const [insightTab, setInsightTab] = useState<"bills" | "amortized">("bills");
+  const [hoveredMonthIdx, setHoveredMonthIdx] = useState<number | null>(null);
 
   const monthNames = [
     "J", "F", "Ma", "A", "M", "Jn",
@@ -88,6 +89,21 @@ export default function MetricsScreen() {
   // Selected Month Details
   const selectedMonthData = yearlyBreakdown[selectedMonthIdx];
 
+  // Map each month's spend into chart coordinates (0-100 percentage space) for the line chart
+  const chartPoints = useMemo(() => {
+    const leftPad = 3, rightPad = 3, topPad = 12, bottomPad = 6;
+    const usableX = 100 - leftPad - rightPad;
+    const usableY = 100 - topPad - bottomPad;
+
+    return yearlyBreakdown.map((monthData, idx) => {
+      const spend = insightTab === "bills" ? monthData.totalSpend : amortizedMonthlySpend;
+      const spendPct = maxSpend > 0 ? Math.min(spend / maxSpend, 1) : 0;
+      const x = leftPad + (idx / (yearlyBreakdown.length - 1)) * usableX;
+      const y = topPad + (1 - spendPct) * usableY;
+      return { x, y, spend, monthName: monthData.monthName };
+    });
+  }, [yearlyBreakdown, insightTab, amortizedMonthlySpend, maxSpend]);
+
   // Dynamic Insight Generation
   const highestSpendMonth = useMemo(() => {
     let best = yearlyBreakdown[0];
@@ -114,6 +130,30 @@ export default function MetricsScreen() {
       }
     });
     return { name: topCat, value: maxVal };
+  }, [subscriptions]);
+
+  // Spend by category, amortized to a monthly figure so weekly/quarterly/yearly bills compare fairly
+  const categoryBreakdown = useMemo(() => {
+    const totals: Record<string, number> = {};
+    let grandTotal = 0;
+
+    subscriptions.filter(s => s.status === "active").forEach(sub => {
+      let monthlyVal = sub.amount;
+      if (sub.billingCycle === "weekly") monthlyVal = (sub.amount * 52) / 12;
+      else if (sub.billingCycle === "quarterly") monthlyVal = sub.amount / 3;
+      else if (sub.billingCycle === "yearly") monthlyVal = sub.amount / 12;
+
+      totals[sub.category] = (totals[sub.category] || 0) + monthlyVal;
+      grandTotal += monthlyVal;
+    });
+
+    return Object.entries(totals)
+      .map(([category, monthlyTotal]) => ({
+        category: category as SubscriptionCategory,
+        monthlyTotal,
+        pct: grandTotal > 0 ? (monthlyTotal / grandTotal) * 100 : 0,
+      }))
+      .sort((a, b) => b.monthlyTotal - a.monthlyTotal);
   }, [subscriptions]);
 
   return (
@@ -206,77 +246,110 @@ export default function MetricsScreen() {
           </button>
         </div>
 
-        {/* 12-Month Bar Chart Card */}
+        {/* 12-Month Line Chart Card */}
         <div className="bg-white border border-slate-150 p-5 rounded-2xl shadow-md flex flex-col gap-4 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-1 bg-slate-900"></div>
-          
+
           <div className="flex justify-between items-center mt-1">
             <div className="flex flex-col">
-              <span className="font-mono text-[9px] text-slate-400 uppercase font-bold tracking-wider">Spend Bar Chart</span>
+              <span className="font-mono text-[9px] text-slate-400 uppercase font-bold tracking-wider">Spend Trend Line</span>
               <h2 className="font-display font-extrabold text-sm text-slate-900">
                 {insightTab === "bills" ? `Cash Flow Projection (${selectedYear})` : `Leveled Monthly Commitments`}
               </h2>
             </div>
             <span className="font-mono text-[9px] bg-slate-100 px-2 py-0.5 rounded-md font-bold text-slate-600">
-              TAP BARS FOR DETAIL
+              HOVER OR TAP FOR DETAIL
             </span>
           </div>
 
           {/* Chart Wrapper */}
           <div className="flex flex-col gap-3 mt-1.5">
-            
-            {/* The main 12 bar flex container */}
-            <div className="flex items-end justify-between h-44 border-b border-slate-100 pb-1 pt-6 px-1">
-              {yearlyBreakdown.map((monthData, idx) => {
+
+            {/* The 12-month line chart container */}
+            <div
+              className="relative h-44 border-b border-slate-100 pb-1 pt-6 px-1"
+              onMouseLeave={() => setHoveredMonthIdx(null)}
+            >
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="absolute inset-0 w-full h-full overflow-visible"
+              >
+                <defs>
+                  <linearGradient id="spendAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#0f172a" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#0f172a" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <polygon
+                  points={`${chartPoints[0].x},100 ${chartPoints.map(p => `${p.x},${p.y}`).join(" ")} ${chartPoints[chartPoints.length - 1].x},100`}
+                  fill="url(#spendAreaGradient)"
+                />
+                <polyline
+                  points={chartPoints.map(p => `${p.x},${p.y}`).join(" ")}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              {/* Point markers rendered as plain HTML so they stay perfectly circular and can host tooltips */}
+              {chartPoints.map((p, idx) => {
                 const isSelected = idx === selectedMonthIdx;
-                
-                // Height calculation
-                // If amortized tab: all months show flat height of amortized spend, relative to maxSpend
-                const barSpend = insightTab === "bills" ? monthData.totalSpend : amortizedMonthlySpend;
-                const pct = maxSpend > 0 ? (barSpend / maxSpend) * 100 : 0;
-                // Minimum visible height if there's spend so users can tap it
-                const heightPct = barSpend > 0 ? Math.max(pct, 4) : 0;
+                const isHovered = idx === hoveredMonthIdx;
+                const showTooltip = (isSelected || isHovered) && p.spend > 0;
 
                 return (
-                  <div 
-                    key={monthData.monthName} 
-                    className="flex-1 flex flex-col items-center group cursor-pointer"
+                  <button
+                    key={monthNames[idx] + idx}
+                    type="button"
                     onClick={() => setSelectedMonthIdx(idx)}
+                    onMouseEnter={() => setHoveredMonthIdx(idx)}
+                    onFocus={() => setHoveredMonthIdx(idx)}
+                    onBlur={() => setHoveredMonthIdx(null)}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center bg-transparent border-0 p-0 m-0 cursor-pointer"
+                    style={{ left: `${p.x}%`, top: `${p.y}%` }}
                   >
-                    {/* Amount Label on top of each bar */}
-                    <div className="h-5 flex items-end justify-center mb-1">
-                      {barSpend > 0 && (
-                        <span className={`font-mono text-[8px] font-bold tracking-tight px-1 transition-all ${
-                          isSelected 
-                            ? "text-slate-950 font-extrabold scale-110" 
-                            : "text-slate-400 group-hover:text-slate-700 text-[7px]"
-                        }`}>
-                          ${Math.round(barSpend)}
-                        </span>
-                      )}
-                    </div>
+                    <span
+                      className={`block rounded-full transition-all ${
+                        isSelected
+                          ? "h-3 w-3 bg-slate-900 ring-4 ring-slate-900/10"
+                          : isHovered
+                          ? "h-2.5 w-2.5 bg-slate-700"
+                          : "h-2 w-2 bg-white border-2 border-slate-300"
+                      }`}
+                    />
 
-                    {/* Interactive Vertical Bar */}
-                    <div className="w-full max-w-[16px] h-32 flex flex-col justify-end">
-                      <div 
-                        style={{ height: `${heightPct}%` }}
-                        className={`w-full rounded-t-md transition-all duration-300 ${
-                          isSelected 
-                            ? "bg-slate-900 shadow-md ring-2 ring-slate-900/10" 
-                            : "bg-slate-200 group-hover:bg-slate-300"
-                        }`}
-                      />
-                    </div>
-
-                    {/* Month abbreviation text */}
-                    <span className={`font-mono text-[8.5px] font-bold mt-2 transition-colors ${
-                      isSelected ? "text-slate-950 font-extrabold" : "text-slate-400 group-hover:text-slate-600"
-                    }`}>
-                      {monthNames[idx]}
-                    </span>
-                  </div>
+                    {showTooltip && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-10 bg-slate-900 text-white text-[9px] font-mono font-bold px-2 py-1 rounded-lg shadow-lg whitespace-nowrap pointer-events-none">
+                        {p.monthName.slice(0, 3)} &middot; {formatCurrency(p.spend)}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+                      </div>
+                    )}
+                  </button>
                 );
               })}
+            </div>
+
+            {/* Month abbreviation labels */}
+            <div className="flex justify-between px-1">
+              {monthNames.map((m, idx) => (
+                <button
+                  key={m + idx}
+                  type="button"
+                  onClick={() => setSelectedMonthIdx(idx)}
+                  onMouseEnter={() => setHoveredMonthIdx(idx)}
+                  onMouseLeave={() => setHoveredMonthIdx(null)}
+                  className={`flex-1 text-center font-mono text-[8.5px] font-bold transition-colors cursor-pointer bg-transparent border-0 ${
+                    idx === selectedMonthIdx ? "text-slate-950 font-extrabold" : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
             </div>
 
             {/* Quick visual baseline helper */}
@@ -311,6 +384,43 @@ export default function MetricsScreen() {
               )}
             </p>
           </div>
+        </div>
+
+        {/* Spend by Category Breakdown */}
+        <div className="bg-white border border-slate-150 p-5 rounded-2xl shadow-md flex flex-col gap-3.5">
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-slate-400 uppercase font-bold tracking-wider">Where It Goes</span>
+            <h2 className="font-display font-extrabold text-sm text-slate-900">Spend by Category</h2>
+          </div>
+
+          {categoryBreakdown.length === 0 ? (
+            <div className="text-center py-4 text-[10px] font-mono text-slate-400 bg-slate-50/50 border border-dashed border-slate-200 rounded-lg">
+              No active subscriptions to categorize yet.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {categoryBreakdown.map((row) => (
+                <div key={row.category} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      {getCategoryIcon(row.category)}
+                      <span className="font-display font-bold text-xs text-slate-900">{row.category}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="font-mono font-bold text-xs text-slate-950">{formatCurrency(row.monthlyTotal)}/mo</span>
+                      <span className="font-mono text-[9px] text-slate-400">{row.pct.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-slate-900 rounded-full transition-all"
+                      style={{ width: `${Math.max(row.pct, 2)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Selected Month Spend Ledger Breakdown */}

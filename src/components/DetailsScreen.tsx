@@ -289,6 +289,9 @@ export default function DetailsScreen() {
             </button>
           )}
         </div>
+
+        {/* Bottom spacer to prevent the floating bottom nav from overlapping the delete button */}
+        <div className="h-36 w-full shrink-0" />
       </div>
     </div>
   );

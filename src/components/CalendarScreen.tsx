@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { formatCurrency, formatReadableDate, getYearlySpendData } from "../utils";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Info, 
-  Calendar as CalendarIcon, 
-  Star, 
-  Tv, 
-  ShieldCheck, 
-  BarChart3, 
-  ArrowUpRight 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Info,
+  Calendar as CalendarIcon,
+  Star,
+  Tv,
+  ShieldCheck,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  ArrowUpRight
 } from "lucide-react";
 
 export default function CalendarScreen() {
@@ -28,16 +30,24 @@ export default function CalendarScreen() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  const [selectedSpendMonthIdx, setSelectedSpendMonthIdx] = useState<number>(month);
-
   const spendData = useMemo(() => {
     return getYearlySpendData(subscriptions, year);
   }, [subscriptions, year]);
 
-  const maxSpend = useMemo(() => {
-    const max = Math.max(...spendData.map(m => m.totalSpend));
-    return max > 0 ? max : 50;
-  }, [spendData]);
+  // Previous month's breakdown, fetched from the prior year's data if the current month is January
+  const prevMonthData = useMemo(() => {
+    const prevDate = new Date(year, month - 1, 1);
+    const prevYear = prevDate.getFullYear();
+    const prevMonthIdx = prevDate.getMonth();
+    const prevYearSpendData = prevYear === year ? spendData : getYearlySpendData(subscriptions, prevYear);
+    return prevYearSpendData[prevMonthIdx];
+  }, [subscriptions, year, month, spendData]);
+
+  const currentMonthData = spendData[month];
+  const spendDelta = currentMonthData.totalSpend - prevMonthData.totalSpend;
+  const spendDeltaPct = prevMonthData.totalSpend > 0
+    ? (spendDelta / prevMonthData.totalSpend) * 100
+    : (currentMonthData.totalSpend > 0 ? 100 : 0);
 
   // Month information
   const monthNames = [
@@ -54,15 +64,11 @@ export default function CalendarScreen() {
   const firstDayIndex = getFirstDayOfMonth(year, month);
 
   const prevMonth = () => {
-    const nextDate = new Date(year, month - 1, 1);
-    setCurrentDate(nextDate);
-    setSelectedSpendMonthIdx(nextDate.getMonth());
+    setCurrentDate(new Date(year, month - 1, 1));
   };
 
   const nextMonth = () => {
-    const nextDate = new Date(year, month + 1, 1);
-    setCurrentDate(nextDate);
-    setSelectedSpendMonthIdx(nextDate.getMonth());
+    setCurrentDate(new Date(year, month + 1, 1));
   };
 
   // Convert date indices to date string: YYYY-MM-DD
@@ -199,16 +205,16 @@ export default function CalendarScreen() {
         </div>
       </div>
 
-      {/* Monthly Spend Metric Bar Chart Card */}
+      {/* Month-over-Month Spend Insight Card */}
       <div className="max-w-sm mx-auto w-full bg-white border border-slate-150 p-4 rounded-2xl shadow-sm mb-4">
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-1.5">
-            <BarChart3 size={15} className="text-slate-900" />
+            <TrendingUp size={15} className="text-slate-900" />
             <h3 className="font-display font-extrabold text-xs text-slate-900 uppercase tracking-wider">
-              Monthly Spend Forecast
+              {monthNames[month]} Spend Insight
             </h3>
           </div>
-          <button 
+          <button
             id="cal-goto-metrics-btn"
             onClick={() => setTab("metrics")}
             className="font-mono text-[9px] text-slate-500 hover:text-slate-950 font-bold bg-slate-50 border border-slate-100 px-2 py-0.5 rounded transition-colors flex items-center gap-0.5 cursor-pointer"
@@ -217,78 +223,65 @@ export default function CalendarScreen() {
           </button>
         </div>
 
-        {/* Small 12-Month Bar Chart */}
-        <div className="flex items-end justify-between h-24 border-b border-slate-100 pb-1 pt-4 px-1">
-          {spendData.map((monthData, idx) => {
-            const isSelected = idx === selectedSpendMonthIdx;
-            const pct = maxSpend > 0 ? (monthData.totalSpend / maxSpend) * 100 : 0;
-            const heightPct = monthData.totalSpend > 0 ? Math.max(pct, 5) : 0;
-
-            return (
-              <button
-                id={`cal-spend-bar-${idx}`}
-                key={monthData.monthName}
-                onClick={() => {
-                  setSelectedSpendMonthIdx(idx);
-                  // Sync the calendar view to this month
-                  setCurrentDate(new Date(year, idx, 1));
-                }}
-                className="flex-1 flex flex-col items-center group cursor-pointer"
-              >
-                {/* Total amount spent label on top of bar */}
-                <div className="h-4 flex items-end justify-center mb-0.5">
-                  {monthData.totalSpend > 0 && (
-                    <span className={`font-mono text-[7px] font-bold tracking-tighter leading-none transition-all ${
-                      isSelected 
-                        ? "text-slate-950 font-extrabold scale-105" 
-                        : "text-slate-400 group-hover:text-slate-600 text-[6px]"
-                    }`}>
-                      ${Math.round(monthData.totalSpend)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Vertical Bar */}
-                <div className="w-full max-w-[10px] h-14 flex flex-col justify-end">
-                  <div
-                    style={{ height: `${heightPct}%` }}
-                    className={`w-full rounded-t-sm transition-all duration-200 ${
-                      isSelected
-                        ? "bg-slate-900 shadow-sm"
-                        : "bg-slate-150 group-hover:bg-slate-200"
-                    }`}
-                  />
-                </div>
-
-                {/* Month abbreviation text */}
-                <span className={`font-mono text-[8px] font-bold mt-1 transition-colors ${
-                  isSelected ? "text-slate-950 font-extrabold" : "text-slate-400 group-hover:text-slate-600"
-                }`}>
-                  {monthData.monthName.slice(0, 3)}
-                </span>
-              </button>
-            );
-          })}
+        {/* This Month vs Last Month comparison */}
+        <div className="grid grid-cols-2 gap-3 pb-3 border-b border-slate-100">
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-[8px] text-slate-400 uppercase font-bold tracking-wider">This Month</span>
+            <span className="font-mono text-lg font-extrabold text-slate-950">
+              {formatCurrency(currentMonthData.totalSpend)}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5 items-end text-right">
+            <span className="font-mono text-[8px] text-slate-400 uppercase font-bold tracking-wider">vs Last Month</span>
+            <span className={`font-mono text-sm font-bold flex items-center gap-1 ${
+              spendDelta > 0 ? "text-rose-600" : spendDelta < 0 ? "text-emerald-600" : "text-slate-500"
+            }`}>
+              {spendDelta > 0 ? (
+                <TrendingUp size={12} />
+              ) : spendDelta < 0 ? (
+                <TrendingDown size={12} />
+              ) : (
+                <Minus size={12} />
+              )}
+              {formatCurrency(Math.abs(spendDelta))}
+              {prevMonthData.totalSpend > 0 && (
+                <span className="text-[9px] font-normal opacity-70">({spendDelta >= 0 ? "+" : "-"}{Math.abs(spendDeltaPct).toFixed(0)}%)</span>
+              )}
+            </span>
+          </div>
         </div>
 
-        {/* Breakdown of selected month's subscriptions */}
+        {/* Plain-language insight sentence */}
+        <div className="bg-slate-50 border border-slate-100 rounded-lg p-2.5 mt-3 text-[10px] font-mono text-slate-600 leading-relaxed">
+          {prevMonthData.totalSpend === 0 && currentMonthData.totalSpend === 0 ? (
+            <>No bills scheduled in {monthNames[month]} or {prevMonthData.monthName}.</>
+          ) : spendDelta === 0 ? (
+            <>Spending is flat vs {prevMonthData.monthName} — no change month over month.</>
+          ) : spendDelta > 0 ? (
+            <>You're on track to spend <strong className="text-slate-900">{formatCurrency(Math.abs(spendDelta))} more</strong> than {prevMonthData.monthName}. Worth a quick review of what renewed this month.</>
+          ) : (
+            <>Nice — <strong className="text-slate-900">{formatCurrency(Math.abs(spendDelta))} less</strong> than {prevMonthData.monthName}.</>
+          )}
+        </div>
+
+        {/* Breakdown of this month's subscriptions */}
         <div className="mt-3.5 pt-3 border-t border-dashed border-slate-100 flex flex-col gap-2">
           <div className="flex justify-between items-center">
             <span className="font-mono text-[9px] text-slate-400 uppercase font-bold tracking-wider">
-              {spendData[selectedSpendMonthIdx].monthName} breakdown
+              {currentMonthData.monthName} breakdown
             </span>
             <span className="font-mono text-[9px] font-bold text-slate-955 bg-slate-100/70 px-1.5 py-0.5 rounded">
-              Total: {formatCurrency(spendData[selectedSpendMonthIdx].totalSpend)}
+              Total: {formatCurrency(currentMonthData.totalSpend)}
             </span>
           </div>
 
-          {spendData[selectedSpendMonthIdx].items.length === 0 ? (
+          {currentMonthData.items.length === 0 ? (
             <div className="text-center py-2 text-[9px] font-mono text-slate-400 bg-slate-50/50 border border-slate-100/50 rounded-lg">
-              No bills scheduled in {spendData[selectedSpendMonthIdx].monthName}.
+              No bills scheduled in {currentMonthData.monthName}.
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto pr-0.5">
-              {spendData[selectedSpendMonthIdx].items.map(item => (
+              {currentMonthData.items.map(item => (
                 <div
                   id={`cal-spend-sub-${item.subscription.id}`}
                   key={item.subscription.id}
