@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import Stripe from "stripe";
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, doc, updateDoc, collection, getDocs, collectionGroup, query, where } from "firebase/firestore";
+import { initializeFirestore, doc, updateDoc, deleteDoc, collection, getDocs, collectionGroup, query, where } from "firebase/firestore";
 import { initializeApp as initializeAdminApp, cert as adminCert } from "firebase-admin/app";
 import { getMessaging, Messaging } from "firebase-admin/messaging";
 import dotenv from "dotenv";
@@ -214,7 +214,10 @@ async function startServer() {
     }
   });
 
-  // API Route to send a test FCM push notification manually
+  // API Route to send a test FCM push notification manually. Delegates to
+  // sendPushToUserTokens (defined below) so this route gets the same per-token
+  // failure logging and stale-token cleanup as the automated alert checks, instead of
+  // duplicating the send logic a third time.
   app.post("/api/notifications/send", async (req, res) => {
     try {
       const { userId, title, body } = req.body;
@@ -222,73 +225,60 @@ async function startServer() {
         return res.status(400).json({ error: "Missing required fields: userId, title, body" });
       }
 
-      // 1. Fetch FCM tokens for the user from Firestore
-      const tokensRef = collection(db, "users", userId, "fcmTokens");
-      const tokensSnap = await getDocs(tokensRef);
-      const tokens: string[] = [];
-      tokensSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.token) {
-          tokens.push(data.token);
-        }
-      });
+      console.log(`[FCM Notification] Test notification requested by user ${userId}: "${title}"`);
+      const result = await sendPushToUserTokens(userId, title, body);
 
-      if (tokens.length === 0) {
+      if (result.tokenCount === 0) {
         return res.json({
           success: false,
           message: "No registered Android FCM devices found for this user. Register a token in your Android Studio project first!",
         });
       }
 
-      console.log(`[FCM Notification] Sending alert to ${tokens.length} devices of user ${userId}: "${title}"`);
-
-      // 2. Try sending using Admin SDK
-      const messaging = getFirebaseAdmin();
-      if (messaging) {
-        const sendPromises = tokens.map((token) => {
-          return messaging.send({
-            token,
-            notification: { title, body },
-            android: {
-              priority: "high",
-              notification: {
-                sound: "default",
-                channelId: "renewals_channel",
-              },
-            },
-          });
-        });
-
-        const results = await Promise.allSettled(sendPromises);
-        const successes = results.filter((r) => r.status === "fulfilled").length;
-        const failures = results.filter((r) => r.status === "rejected").length;
-
-        return res.json({
-          success: true,
-          sentCount: successes,
-          failCount: failures,
-          message: `FCM push completed: ${successes} succeeded, ${failures} failed.`,
-        });
-      } else {
-        // Fallback demo/log mode
+      if (result.demoMode) {
         return res.json({
           success: true,
           demoMode: true,
-          tokensSent: tokens,
-          message: `[Demo Mode] No FIREBASE_SERVICE_ACCOUNT_JSON configured. The server simulated pushing to tokens: ${tokens.join(", ")}`,
+          message: `[Demo Mode] No FIREBASE_SERVICE_ACCOUNT_JSON configured. The server simulated ${result.tokenCount} push(es) without sending.`,
         });
       }
+
+      return res.json({
+        success: true,
+        sentCount: result.sentCount,
+        failCount: result.failCount,
+        staleTokensRemoved: result.staleRemoved,
+        message: `FCM push completed: ${result.sentCount} succeeded, ${result.failCount} failed.` +
+          (result.staleRemoved > 0 ? ` Removed ${result.staleRemoved} stale device token(s) that will no longer be used.` : ""),
+      });
     } catch (err: any) {
       console.error("Error sending push notification:", err);
       res.status(500).json({ error: err.message });
     }
   });
 
+  // FCM error codes that mean the token is permanently dead (app uninstalled, token
+  // rotated, etc.) rather than a transient failure — safe to delete from Firestore.
+  // See: https://firebase.google.com/docs/cloud-messaging/send-message#admin-sdk-errors
+  const STALE_TOKEN_ERROR_CODES = new Set([
+    "messaging/registration-token-not-registered",
+    "messaging/invalid-argument",
+    "messaging/invalid-registration-token",
+  ]);
+
   // Shared helper: sends one FCM push to every device token registered for a user
   // (at Firestore path users/{userId}/fcmTokens, written by src/lib/pushNotifications.ts).
-  // Extracted so the free-trial check below can reuse the exact same send logic as the
-  // renewal check without duplicating the token-fetch + Admin SDK send code a third time.
-  async function sendPushToUserTokens(userId: string, title: string, body: string): Promise<number> {
+  // Extracted so both alert checks below and the manual test-send route reuse the same
+  // send + failure-handling logic instead of duplicating it three times.
+  //
+  // Previously this only returned tokens.length (how many sends were *attempted*), and
+  // failures were silently discarded by Promise.allSettled with no logging — there was
+  // no way to tell a real delivery from one that failed, or to know why. Now it logs
+  // each failure's actual FCM error code/message, and removes tokens that FCM confirms
+  // are permanently dead (STALE_TOKEN_ERROR_CODES above) so they stop being counted as
+  // a "registered device" on every future send — this is the fix for tokens
+  // accumulating from repeated app reinstalls during testing/updates.
+  async function sendPushToUserTokens(userId: string, title: string, body: string): Promise<{ tokenCount: number; sentCount: number; failCount: number; staleRemoved: number; demoMode: boolean }> {
     const tokensRef = collection(db, "users", userId, "fcmTokens");
     const tokensSnap = await getDocs(tokensRef);
     const tokens: string[] = [];
@@ -297,11 +287,16 @@ async function startServer() {
       if (tData.token) tokens.push(tData.token);
     });
 
-    if (tokens.length === 0) return 0;
+    if (tokens.length === 0) return { tokenCount: 0, sentCount: 0, failCount: 0, staleRemoved: 0, demoMode: false };
 
     const messaging = getFirebaseAdmin();
-    if (messaging) {
-      const sendPromises = tokens.map((token) =>
+    if (!messaging) {
+      // Demo mode: no Admin SDK configured, nothing was actually sent.
+      return { tokenCount: tokens.length, sentCount: 0, failCount: 0, staleRemoved: 0, demoMode: true };
+    }
+
+    const results = await Promise.allSettled(
+      tokens.map((token) =>
         messaging.send({
           token,
           notification: { title, body },
@@ -310,10 +305,36 @@ async function startServer() {
             notification: { sound: "default", channelId: "renewals_channel" },
           },
         })
+      )
+    );
+
+    const staleTokens: string[] = [];
+    let sentCount = 0;
+    let failCount = 0;
+
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        sentCount++;
+      } else {
+        failCount++;
+        const err: any = r.reason;
+        console.error(`[FCM Notification] Send failed for user ${userId}, token ${tokens[i].slice(0, 12)}...: ${err?.code || "unknown"} - ${err?.message || err}`);
+        if (STALE_TOKEN_ERROR_CODES.has(err?.code)) {
+          staleTokens.push(tokens[i]);
+        }
+      }
+    });
+
+    if (staleTokens.length > 0) {
+      // Firestore doc IDs are the token value itself (see setDoc call in
+      // src/lib/pushNotifications.ts), so each stale token maps directly to a doc path.
+      await Promise.allSettled(
+        staleTokens.map((token) => deleteDoc(doc(db, "users", userId, "fcmTokens", token)))
       );
-      await Promise.allSettled(sendPromises);
+      console.log(`[FCM Notification] Removed ${staleTokens.length} stale/dead token(s) for user ${userId}.`);
     }
-    return tokens.length;
+
+    return { tokenCount: tokens.length, sentCount, failCount, staleRemoved: staleTokens.length, demoMode: false };
   }
 
   // Scans every active subscription for an upcoming renewal (based on nextChargeDate +
@@ -360,10 +381,10 @@ async function startServer() {
       if (reminderDateStr === todayStr) {
         const title = `Subscription Renewal Alert: ${sub.name}`;
         const body = `Your ${sub.name} subscription (${sub.currency || "$"}${sub.amount}) renews on ${sub.nextChargeDate}. Please review.`;
-        const sentToTokens = await sendPushToUserTokens(userId, title, body);
-        if (sentToTokens > 0) {
-          console.log(`[Alerts Checker] Sent renewal alert for "${sub.name}" to ${sentToTokens} device(s) of user ${userId}.`);
-          alertsSent.push({ userId, subName: sub.name, nextChargeDate: sub.nextChargeDate, sentToTokens });
+        const { sentCount } = await sendPushToUserTokens(userId, title, body);
+        if (sentCount > 0) {
+          console.log(`[Alerts Checker] Sent renewal alert for "${sub.name}" to ${sentCount} device(s) of user ${userId}.`);
+          alertsSent.push({ userId, subName: sub.name, nextChargeDate: sub.nextChargeDate, sentToTokens: sentCount });
         }
       }
     }
@@ -412,10 +433,10 @@ async function startServer() {
       if (reminderDateStr === todayStr) {
         const title = `Free Trial Ending: ${sub.name}`;
         const body = `Your ${sub.name} free trial ends on ${sub.freeTrialEndDate}. It will convert to a paid subscription unless cancelled.`;
-        const sentToTokens = await sendPushToUserTokens(userId, title, body);
-        if (sentToTokens > 0) {
-          console.log(`[Alerts Checker] Sent trial-ending alert for "${sub.name}" to ${sentToTokens} device(s) of user ${userId}.`);
-          alertsSent.push({ userId, subName: sub.name, freeTrialEndDate: sub.freeTrialEndDate, sentToTokens });
+        const { sentCount } = await sendPushToUserTokens(userId, title, body);
+        if (sentCount > 0) {
+          console.log(`[Alerts Checker] Sent trial-ending alert for "${sub.name}" to ${sentCount} device(s) of user ${userId}.`);
+          alertsSent.push({ userId, subName: sub.name, freeTrialEndDate: sub.freeTrialEndDate, sentToTokens: sentCount });
         }
       }
     }
