@@ -1,15 +1,15 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
-import { Home, List, Plus, Calendar, BarChart3, Settings } from "lucide-react";
+import { Home, List, Plus, Calendar, BarChart3, Settings, Zap } from "lucide-react";
 
 export default function BottomNav() {
-  const { activeTab, setTab, setScreen } = useApp();
+  const { activeTab, setTab, setScreen, setShowQuickAdd } = useApp();
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-100 pt-5 pb-3 px-4 z-50 shadow-[0_-4px_20px_-4px_rgba(148,163,184,0.12)]">
-      
+
       {/* Small floating Add button placed nicely above the menus */}
-      <div className="absolute -top-[18px] left-1/2 -translate-x-1/2">
+      <div className="absolute -top-[18px] left-1/2 -translate-x-1/2 flex items-center gap-2">
         <button
           id="nav-tab-add"
           onClick={() => setScreen("add")}
@@ -17,6 +17,17 @@ export default function BottomNav() {
           className="flex items-center justify-center bg-slate-950 text-white h-9 w-9 rounded-full shadow-md hover:bg-slate-800 transition-all cursor-pointer hover:scale-110 active:scale-95 border-2 border-white"
         >
           <Plus size={18} className="stroke-[3px]" />
+        </button>
+
+        {/* Secondary trigger for the lightweight Quick Add modal (name + price only) —
+            additive button, doesn't change what the primary Plus button above does. */}
+        <button
+          id="nav-tab-quickadd"
+          onClick={() => setShowQuickAdd(true)}
+          title="Quick Add (name + price only)"
+          className="flex items-center justify-center bg-white text-slate-800 h-8 w-8 rounded-full shadow-md hover:bg-slate-50 transition-all cursor-pointer hover:scale-110 active:scale-95 border-2 border-slate-950"
+        >
+          <Zap size={14} className="stroke-[2.5px]" />
         </button>
       </div>
 

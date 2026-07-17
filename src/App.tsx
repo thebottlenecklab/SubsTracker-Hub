@@ -1,4 +1,5 @@
 import React from "react";
+import { Capacitor } from "@capacitor/core";
 import { AppProvider, useApp } from "./context/AppContext";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AuthScreen from "./components/AuthScreen";
@@ -13,6 +14,7 @@ import DetailsScreen from "./components/DetailsScreen";
 import SettingsScreen from "./components/SettingsScreen";
 import MetricsScreen from "./components/MetricsScreen";
 import BottomNav from "./components/BottomNav";
+import QuickAddModal from "./components/QuickAddModal";
 import { CheckCircle2, AlertTriangle, X, ShieldAlert, Sparkles, CreditCard, ExternalLink, ShieldCheck, Info } from "lucide-react";
 
 function StatusBarTime() {
@@ -46,7 +48,8 @@ function AppContent() {
     stripeCheckoutUrl,
     setStripeCheckoutUrl,
     stripeCheckoutSessionId,
-    verifyStripeSession
+    verifyStripeSession,
+    showQuickAdd
   } = useApp();
 
   const [verifying, setVerifying] = React.useState(false);
@@ -242,7 +245,7 @@ function AppContent() {
                   {/* Bulletproof External Browser opener */}
                   <button 
                     onClick={() => {
-                      const isCapacitor = (window as any).Capacitor !== undefined;
+                      const isCapacitor = Capacitor.isNativePlatform();
                       if (isCapacitor) {
                         try {
                           window.open(stripeCheckoutUrl, "_system");
@@ -319,6 +322,10 @@ function AppContent() {
               </div>
             </div>
           )}
+
+          {/* Quick Add overlay — lightweight name+price entry, available from any screen
+              via the BottomNav trigger. Isolated component; doesn't touch AddEditScreen. */}
+          {showQuickAdd && <QuickAddModal />}
 
           {/* Dynamic Screen Mounting with scroll isolation inside the phone screen */}
           <main className="flex-1 flex flex-col overflow-y-auto">

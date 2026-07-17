@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { Subscription, BillingCycle } from "./types";
 
 /**
@@ -5,14 +6,12 @@ import { Subscription, BillingCycle } from "./types";
  * otherwise returns the relative path for standard web browsers.
  */
 export function getApiUrl(path: string): string {
-  const isCapacitor = (window as any).Capacitor !== undefined || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  const isLocalHost = window.location.origin.startsWith("http://localhost") || 
-                      window.location.origin.startsWith("capacitor://") || 
-                      window.location.origin.startsWith("file://");
-
-  if (isCapacitor && isLocalHost) {
+  // Capacitor's native WebView always serves the bundled app from a local
+  // origin (e.g. https://localhost on Android, capacitor://localhost on iOS),
+  // never a real remote host — so isNativePlatform() alone is sufficient here.
+  if (Capacitor.isNativePlatform()) {
     // Read the configured VITE_APP_URL, defaulting to the Cloud Run server URL
-    const configuredUrl = (import.meta as any).env?.VITE_APP_URL || "https://ais-dev-jerhpn5r5lku2paxzqvrxn-472595336040.us-east1.run.app";
+    const configuredUrl = (import.meta as any).env?.VITE_APP_URL || "https://substracker-backend-409244064662.us-east1.run.app";
     const base = configuredUrl.endsWith("/") ? configuredUrl.slice(0, -1) : configuredUrl;
     const formattedPath = path.startsWith("/") ? path : `/${path}`;
     return `${base}${formattedPath}`;
@@ -175,9 +174,55 @@ export function formatReadableDate(dateString: string): string {
 }
 
 /**
- * Exports a list of subscriptions as a CSV file and returns the CSV content string.
+ * Writes a file and hands it to the platform's native "save/share" flow so it lands
+ * on the user's device as a real file, rather than just being copied to the clipboard.
+ *
+ * On native Android/iOS builds, Android's scoped storage rules (API 29+) block apps
+ * from silently writing into the public Downloads folder without either a storage
+ * permission (which Play Store review flags for apps that don't need broad file
+ * access) or going through the OS's native save/share UI. So we write the file to the
+ * app's private cache dir via @capacitor/filesystem, then hand it to @capacitor/share,
+ * which opens the native Android share sheet — the user picks "Files"/"Drive"/etc. to
+ * save it, which is the standard permission-free pattern for this on Android.
+ *
+ * On the web (desktop browser preview), this triggers a normal anchor-click download.
  */
-export function downloadCSV(subscriptions: Subscription[]): string {
+async function saveOrShareFile(filename: string, mimeType: string, content: { text?: string; base64?: string }): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem, Directory, Encoding } = await import("@capacitor/filesystem");
+    const { Share } = await import("@capacitor/share");
+
+    const writeResult = content.text !== undefined
+      ? await Filesystem.writeFile({ path: filename, data: content.text, directory: Directory.Cache, encoding: Encoding.UTF8 })
+      : await Filesystem.writeFile({ path: filename, data: content.base64 as string, directory: Directory.Cache });
+
+    await Share.share({
+      title: filename,
+      url: writeResult.uri,
+      dialogTitle: `Save ${filename}`
+    });
+    return;
+  }
+
+  const blob = content.text !== undefined
+    ? new Blob([content.text], { type: mimeType })
+    : new Blob([Uint8Array.from(atob(content.base64 as string), c => c.charCodeAt(0))], { type: mimeType });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Exports a list of subscriptions as a CSV file, saving/sharing it via saveOrShareFile.
+ */
+export async function downloadCSV(subscriptions: Subscription[]): Promise<void> {
   const headers = [
     "Service Name",
     "Amount",
@@ -189,7 +234,7 @@ export function downloadCSV(subscriptions: Subscription[]): string {
     "Status",
     "Notes"
   ];
-  
+
   const rows = subscriptions.map(sub => [
     `"${sub.name.replace(/"/g, '""')}"`,
     sub.amount,
@@ -207,21 +252,84 @@ export function downloadCSV(subscriptions: Subscription[]): string {
     ...rows.map(e => e.join(","))
   ].join("\n");
 
-  try {
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (e) {
-    console.warn("Standard CSV file download blocked or not supported in this environment:", e);
-  }
+  await saveOrShareFile(
+    `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`,
+    "text/csv;charset=utf-8;",
+    { text: csvContent }
+  );
+}
 
-  return csvContent;
+/**
+ * Exports a list of subscriptions as a PDF ledger, saving/sharing it via saveOrShareFile.
+ */
+export async function downloadPDF(subscriptions: Subscription[]): Promise<void> {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF();
+
+  const marginX = 14;
+  let y = 18;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("SubsTracker Hub - Subscription Ledger", marginX, y);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  y += 6;
+  doc.text(`Generated ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`, marginX, y);
+  y += 8;
+
+  const headers = ["Service", "Amount", "Cycle", "Next Charge", "Category", "Status"];
+  const colWidths = [42, 24, 22, 30, 32, 26];
+
+  const drawRow = (cells: string[], bold = false) => {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(9);
+    let x = marginX;
+    cells.forEach((cell, i) => {
+      doc.text(String(cell), x, y);
+      x += colWidths[i];
+    });
+    y += 6;
+  };
+
+  drawRow(headers, true);
+  doc.setLineWidth(0.2);
+  doc.line(marginX, y - 4, marginX + colWidths.reduce((a, b) => a + b, 0), y - 4);
+
+  subscriptions.forEach(sub => {
+    if (y > 280) {
+      doc.addPage();
+      y = 18;
+    }
+    drawRow([
+      sub.name,
+      sub.amount.toString(),
+      sub.billingCycle,
+      sub.nextChargeDate,
+      sub.category,
+      sub.status
+    ]);
+  });
+
+  const base64 = doc.output("datauristring").split(",")[1];
+
+  await saveOrShareFile(
+    `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.pdf`,
+    "application/pdf",
+    { base64 }
+  );
+}
+
+/**
+ * Exports the full local JSON backup, saving/sharing it via saveOrShareFile.
+ */
+export async function downloadJSON(jsonStr: string): Promise<void> {
+  await saveOrShareFile(
+    `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.json`,
+    "application/json",
+    { text: jsonStr }
+  );
 }
 
 export interface MonthlySpendItem {

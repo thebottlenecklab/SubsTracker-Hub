@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { downloadCSV, getAutoDetectedCurrency } from "../utils";
-import { 
-  LogOut, Shield, Download, Upload, RefreshCw, Key, CreditCard, 
-  Trash2, ShieldCheck, Check, AlertCircle, FileText, HelpCircle, UserCheck,
-  Globe, Palette
+import { downloadCSV, downloadPDF, downloadJSON, getAutoDetectedCurrency, getApiUrl } from "../utils";
+import {
+  LogOut, Shield, Download, Upload, RefreshCw, Key, CreditCard,
+  Trash2, ShieldCheck, Check, AlertCircle, FileText, FileDown, HelpCircle, UserCheck,
+  Globe, Palette, Bell
 } from "lucide-react";
 
 export default function SettingsScreen() {
@@ -25,56 +25,59 @@ export default function SettingsScreen() {
   const [importJson, setImportJson] = useState<string>("");
   const [showImportArea, setShowImportArea] = useState<boolean>(false);
   const [importStatus, setImportStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [exportSuccess, setExportSuccess] = useState<boolean>(false);
-  const [csvContent, setCsvContent] = useState<string | null>(null);
-  const [csvCopied, setCsvCopied] = useState<boolean>(false);
+  const [exportingFormat, setExportingFormat] = useState<"json" | "csv" | "pdf" | null>(null);
+  const [exportedFormat, setExportedFormat] = useState<"json" | "csv" | "pdf" | null>(null);
 
-  const handleCopyBackup = () => {
-    const jsonStr = exportLocalData();
-    navigator.clipboard.writeText(jsonStr);
-    setExportSuccess(true);
-    setTimeout(() => setExportSuccess(false), 3000);
+  // "Send test notification" state — lets a signed-in user confirm push notifications
+  // are actually reaching their device, by hitting the existing /api/notifications/send
+  // backend route (previously unreachable from anywhere in the app's UI).
+  const [testNotifSending, setTestNotifSending] = useState<boolean>(false);
+  const [testNotifResult, setTestNotifResult] = useState<string | null>(null);
+
+  const handleSendTestNotification = async () => {
+    // Skip gracefully: local-only mode has no signed-in uid and therefore no
+    // registered FCM device tokens to send to.
+    if (!profile?.uid || isLocalOnly) return;
+
+    setTestNotifSending(true);
+    setTestNotifResult(null);
+    try {
+      const res = await fetch(getApiUrl("/api/notifications/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: profile.uid,
+          title: "Test Notification",
+          body: "If you can see this, SubsTracker Hub notifications are working!"
+        })
+      });
+      const data = await res.json();
+      setTestNotifResult(data.message || (data.success ? "Sent! Check your notification tray." : "Failed to send test notification."));
+    } catch (err) {
+      console.error("Failed to send test notification:", err);
+      setTestNotifResult("Couldn't reach the notification server. Check your connection.");
+    } finally {
+      setTestNotifSending(false);
+      setTimeout(() => setTestNotifResult(null), 6000);
+    }
   };
 
-  const handleCsvDownload = () => {
-    const csvStr = downloadCSV(subscriptions);
-    setCsvContent(csvStr);
-    
-    // Copy to clipboard for easy pasting as a fallback
+  const runExport = async (format: "json" | "csv" | "pdf") => {
+    setExportingFormat(format);
     try {
-      navigator.clipboard.writeText(csvStr);
-      setCsvCopied(true);
-      setTimeout(() => setCsvCopied(false), 3000);
+      if (format === "json") {
+        await downloadJSON(exportLocalData());
+      } else if (format === "csv") {
+        await downloadCSV(subscriptions);
+      } else {
+        await downloadPDF(subscriptions);
+      }
+      setExportedFormat(format);
+      setTimeout(() => setExportedFormat(null), 3000);
     } catch (err) {
-      console.warn("Failed to copy CSV to clipboard automatically:", err);
-    }
-
-    // Programmatically create and submit a form to trigger native device download via Express backend.
-    // Since the server returns the CSV file with "Content-Disposition: attachment", the browser
-    // will trigger a native download prompt directly on the user's mobile or desktop device
-    // without redirecting or reloading the page.
-    try {
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = "/api/export-csv";
-      
-      const csvInput = document.createElement("input");
-      csvInput.type = "hidden";
-      csvInput.name = "csvData";
-      csvInput.value = csvStr;
-      form.appendChild(csvInput);
-
-      const filenameInput = document.createElement("input");
-      filenameInput.type = "hidden";
-      filenameInput.name = "filename";
-      filenameInput.value = `SubsTracker_Hub_Backup_${new Date().toISOString().split('T')[0]}.csv`;
-      form.appendChild(filenameInput);
-
-      document.body.appendChild(form);
-      form.submit();
-      document.body.removeChild(form);
-    } catch (err) {
-      console.error("Failed to programmatically submit CSV download form:", err);
+      console.error(`Failed to export ${format}:`, err);
+    } finally {
+      setExportingFormat(null);
     }
   };
 
@@ -293,6 +296,39 @@ export default function SettingsScreen() {
           </button>
         </div>
 
+        {/* Notifications Box — new: exposes the existing /api/notifications/send route
+            as an in-app "send test notification" button, so users can confirm renewal
+            and free-trial alerts will actually reach their device. */}
+        <div className="bg-white border border-slate-150 p-5 rounded-2xl shadow-md flex flex-col gap-3">
+          <span className="font-mono text-[10px] text-slate-400 uppercase font-bold tracking-wider border-b border-slate-100 pb-1.5">Notifications</span>
+
+          {isLocalOnly ? (
+            <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
+              Local-only mode doesn't register for push notifications. Sign in with an account to enable renewal and free-trial alerts.
+            </p>
+          ) : (
+            <>
+              <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
+                Send yourself a test push to confirm renewal and free-trial-ending alerts will reach this device.
+              </p>
+              <button
+                id="settings-test-notification-btn"
+                onClick={handleSendTestNotification}
+                disabled={testNotifSending}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-700 py-2.5 px-4 font-mono font-bold text-xs rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Bell size={12} />
+                {testNotifSending ? "Sending..." : "Send Test Notification"}
+              </button>
+              {testNotifResult && (
+                <p className="text-[10px] text-slate-500 leading-relaxed font-mono bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                  {testNotifResult}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Backup and Data Export Box */}
         <div className="bg-white border border-slate-150 p-5 rounded-2xl shadow-md flex flex-col gap-3.5">
           <span className="font-mono text-[10px] text-slate-400 uppercase font-bold tracking-wider border-b border-slate-100 pb-1.5">Data Portability</span>
@@ -301,64 +337,39 @@ export default function SettingsScreen() {
             {/* JSON Export */}
             <button
               id="settings-export-json-btn"
-              onClick={handleCopyBackup}
-              className="bg-slate-50 border border-slate-200 text-slate-700 py-2 px-1.5 font-mono text-[10px] font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+              onClick={() => runExport("json")}
+              disabled={exportingFormat === "json"}
+              className="bg-slate-50 border border-slate-200 text-slate-700 py-2 px-1.5 font-mono text-[10px] font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Download size={11} />
-              {exportSuccess ? "Copied JSON!" : "Export JSON"}
+              {exportedFormat === "json" ? <Check size={11} className="text-emerald-600" /> : <Download size={11} />}
+              {exportingFormat === "json" ? "Exporting..." : exportedFormat === "json" ? "JSON Saved!" : "Export JSON"}
             </button>
 
             {/* CSV Export */}
             <button
               id="settings-export-csv-btn"
-              onClick={handleCsvDownload}
-              className="bg-slate-50 border border-slate-200 text-slate-700 py-2 px-1.5 font-mono text-[10px] font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs"
+              onClick={() => runExport("csv")}
+              disabled={exportingFormat === "csv"}
+              className="bg-slate-50 border border-slate-200 text-slate-700 py-2 px-1.5 font-mono text-[10px] font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <FileText size={11} />
-              {csvCopied ? "CSV Copied!" : "Export CSV Ledger"}
+              {exportedFormat === "csv" ? <Check size={11} className="text-emerald-600" /> : <FileText size={11} />}
+              {exportingFormat === "csv" ? "Exporting..." : exportedFormat === "csv" ? "CSV Saved!" : "Export CSV Ledger"}
+            </button>
+
+            {/* PDF Export */}
+            <button
+              id="settings-export-pdf-btn"
+              onClick={() => runExport("pdf")}
+              disabled={exportingFormat === "pdf"}
+              className="col-span-2 bg-slate-50 border border-slate-200 text-slate-700 py-2 px-1.5 font-mono text-[10px] font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {exportedFormat === "pdf" ? <Check size={11} className="text-emerald-600" /> : <FileDown size={11} />}
+              {exportingFormat === "pdf" ? "Generating PDF..." : exportedFormat === "pdf" ? "PDF Saved!" : "Export PDF Ledger"}
             </button>
           </div>
-
-          {csvContent && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-1 flex flex-col gap-2 animate-fade-in text-[11px] relative">
-              <button 
-                type="button"
-                onClick={() => setCsvContent(null)}
-                className="absolute top-2 right-2.5 text-slate-400 hover:text-slate-700 font-bold font-mono text-xs cursor-pointer"
-                title="Hide CSV"
-              >
-                ✕
-              </button>
-              <div className="flex items-center gap-1.5 text-slate-700 font-semibold mb-0.5">
-                <Check className="text-emerald-600 animate-pulse" size={13} />
-                <span>CSV Ledger Ready & Copied!</span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed font-sans">
-                Due to phone/sandbox constraints, standard downloads may be blocked. The CSV table data is copied to your clipboard to paste into Google Sheets or Excel. You can also manually copy below:
-              </p>
-              <textarea
-                readOnly
-                value={csvContent}
-                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-                className="w-full h-24 bg-white border border-slate-200 rounded-lg p-2 font-mono text-[9px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-900 resize-none cursor-text shadow-xs"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  try {
-                    navigator.clipboard.writeText(csvContent);
-                    setCsvCopied(true);
-                    setTimeout(() => setCsvCopied(false), 3000);
-                  } catch (e) {
-                    console.error("Failed to copy", e);
-                  }
-                }}
-                className="self-end px-3 py-1 bg-slate-900 text-white font-mono text-[9px] rounded-lg hover:bg-slate-800 transition cursor-pointer"
-              >
-                {csvCopied ? "Copied to Clipboard!" : "Copy Raw CSV"}
-              </button>
-            </div>
-          )}
+          <p className="text-[9.5px] text-slate-400 leading-relaxed font-sans -mt-1.5">
+            On your phone, exporting opens the native "Save/Share" sheet — pick Files, Drive, or another app to save the file to your device.
+          </p>
 
           <div className="flex flex-col gap-2">
             <button

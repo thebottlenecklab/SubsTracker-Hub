@@ -3,22 +3,46 @@ import { useApp } from "../context/AppContext";
 import { CATEGORIES } from "../data";
 import { formatCurrency, formatReadableDate, getDaysRemaining } from "../utils";
 import { Search, Filter, ChevronRight, Play, Pause, AlertCircle, RefreshCw, Star, ArrowUpDown } from "lucide-react";
-import { SubscriptionCategory } from "../types";
+import { Subscription, SubscriptionCategory } from "../types";
+import RenewalUrgencyDot from "./RenewalUrgencyDot";
+
+// Quick filter chips — UI-only logic layered on top of the existing subscriptions
+// list, using fields the data model already has (billingCycle, isFreeTrial, status).
+// No new field or storage is introduced; this is purely a predicate over existing data.
+// Defined as a plain array of {id, label, test} so adding another quick filter later
+// is a one-line addition here, without touching the filtering logic below.
+type QuickFilterId = "All" | "Monthly" | "Annual" | "Trial" | "Cancelled";
+
+const QUICK_FILTERS: { id: QuickFilterId; label: string; test: (sub: Subscription) => boolean }[] = [
+  { id: "All", label: "All", test: () => true },
+  { id: "Monthly", label: "Monthly", test: (sub) => sub.billingCycle === "monthly" },
+  { id: "Annual", label: "Annual", test: (sub) => sub.billingCycle === "yearly" },
+  { id: "Trial", label: "Trial", test: (sub) => sub.isFreeTrial === true },
+  { id: "Cancelled", label: "Cancelled", test: (sub) => sub.status === "canceled" },
+];
 
 export default function ListScreen() {
   const { subscriptions, setSelectedSubId, setScreen } = useApp();
   const [search, setSearch] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedQuickFilter, setSelectedQuickFilter] = useState<QuickFilterId>("All");
   const [sortBy, setSortBy] = useState<"date" | "amount" | "name">("date");
 
   // Filter and Sort Subscriptions
+  const activeQuickFilter = QUICK_FILTERS.find((f) => f.id === selectedQuickFilter) || QUICK_FILTERS[0];
+
   const filteredSubscriptions = subscriptions.filter((sub) => {
-    const matchesSearch = sub.name.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch = sub.name.toLowerCase().includes(search.toLowerCase()) ||
                           (sub.notes && sub.notes.toLowerCase().includes(search.toLowerCase()));
-    
+
     const matchesCategory = selectedCategory === "All" || sub.category === selectedCategory;
 
-    return matchesSearch && matchesCategory;
+    // New: matches the selected quick filter (billing cycle / trial / cancelled).
+    // Existing search+category filters are untouched; this is combined with AND,
+    // same as matchesCategory already is, so all three narrow the list together.
+    const matchesQuickFilter = activeQuickFilter.test(sub);
+
+    return matchesSearch && matchesCategory && matchesQuickFilter;
   });
 
   // Sort logic
@@ -102,6 +126,28 @@ export default function ListScreen() {
         </div>
       </div>
 
+      {/* New: Quick Filters row (billing cycle / trial / cancelled) — a second,
+          independent filter row placed right below the existing category filters.
+          Purely additive: the category row above and the search input are unchanged. */}
+      <div className="max-w-sm mx-auto w-full mb-4">
+        <div className="flex gap-1.5 overflow-x-auto py-1 scrollbar-none -mx-1 px-1">
+          {QUICK_FILTERS.map((f) => (
+            <button
+              id={`filter-quick-${f.id.toLowerCase()}`}
+              key={f.id}
+              onClick={() => setSelectedQuickFilter(f.id)}
+              className={`shrink-0 py-1 px-3.5 text-[10px] font-mono font-bold uppercase rounded-lg transition-colors cursor-pointer border ${
+                selectedQuickFilter === f.id
+                  ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Sorting Controls */}
       <div className="max-w-sm mx-auto w-full flex justify-between items-center mb-3 text-[10px] font-mono text-slate-400">
         <div className="flex items-center gap-1">
@@ -130,8 +176,17 @@ export default function ListScreen() {
         {sortedSubscriptions.length === 0 ? (
           <div className="bg-white border border-slate-200 p-6 rounded-2xl text-center flex flex-col gap-2 items-center my-4">
             <AlertCircle size={20} className="text-slate-400" />
-            <p className="font-display font-bold text-xs text-slate-800">No matching subscriptions</p>
-            <p className="text-[10px] text-slate-500">Try adjusting your filters or search keywords.</p>
+            {subscriptions.length === 0 ? (
+              <>
+                <p className="font-display font-bold text-xs text-slate-800">No subscriptions yet</p>
+                <p className="text-[10px] text-slate-500">Add your first subscription to start tracking it here.</p>
+              </>
+            ) : (
+              <>
+                <p className="font-display font-bold text-xs text-slate-800">No matching subscriptions</p>
+                <p className="text-[10px] text-slate-500">Try adjusting your filters or search keywords.</p>
+              </>
+            )}
           </div>
         ) : (
           sortedSubscriptions.map((sub) => {
@@ -151,10 +206,15 @@ export default function ListScreen() {
               >
                 <div className="flex flex-col gap-1 flex-1 min-w-0 pr-2">
                   <div className="flex items-center gap-1.5">
+                    {/* New: lightweight renewal-urgency color dot (src/components/RenewalUrgencyDot.tsx).
+                        Purely visual, computed from existing fields (nextChargeDate, status) —
+                        no data model change. */}
+                    <RenewalUrgencyDot days={days} isActive={sub.status === "active"} />
+
                     <h3 className="font-display font-bold text-xs text-slate-900 truncate">
                       {sub.name}
                     </h3>
-                    
+
                     {/* Free Trial Badge */}
                     {isTrial && (
                       <span className="font-mono text-[8px] bg-amber-50 text-amber-700 border border-amber-200 font-bold py-0.5 px-1.5 rounded-lg shrink-0 scale-90 uppercase">

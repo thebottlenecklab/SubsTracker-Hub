@@ -73,6 +73,10 @@ interface AppContextType {
   paymentError: string | null;
   stripeCheckoutSessionId: string | null;
   setPaymentError: (val: string | null) => void;
+  // Controls visibility of the Quick Add modal (src/components/QuickAddModal.tsx) — a
+  // lightweight name+price-only entry flow, separate from the full AddEditScreen form.
+  showQuickAdd: boolean;
+  setShowQuickAdd: (val: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -91,6 +95,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const unsubProfileRef = React.useRef<(() => void) | null>(null);
   const unsubSubsRef = React.useRef<(() => void) | null>(null);
 
+  // Mirrors currentScreen so the onAuthStateChanged callback below (subscribed once,
+  // with an empty dependency array) always reads the live screen instead of the
+  // stale value captured when the effect first ran.
+  const currentScreenRef = React.useRef<string>(currentScreen);
+  useEffect(() => {
+    currentScreenRef.current = currentScreen;
+  }, [currentScreen]);
+
   // URL parameters for Stripe integration
   const [stripeSandboxSession, setStripeSandboxSession] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState<boolean>(false);
@@ -98,6 +110,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [stripeCheckoutSessionId, setStripeCheckoutSessionId] = useState<string | null>(null);
+
+  // Quick Add modal visibility (see QuickAddModal.tsx) — a separate, lightweight
+  // add-flow that lives alongside the full AddEditScreen form without modifying it.
+  const [showQuickAdd, setShowQuickAdd] = useState<boolean>(false);
 
   // Check URL query parameters for payments/sandbox checkout
   useEffect(() => {
@@ -286,7 +302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             localStorage.setItem(`substracker_profile_${firebaseUser.uid}`, JSON.stringify(currentProfile));
 
             // Auto-route to correct screen if currently on welcome or auth screens
-            if (currentScreen === "welcome" || currentScreen === "auth") {
+            if (currentScreenRef.current === "welcome" || currentScreenRef.current === "auth") {
               if (currentProfile.onboarded) {
                 setCurrentScreen("dashboard");
                 setActiveTab("home");
@@ -487,7 +503,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = async (email: string, pass: string) => {
     localStorage.removeItem("substracker_local_only");
     await createUserWithEmailAndPassword(auth, email, pass);
-    setScreen("onboarding");
+    setScreen("plan");
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
@@ -520,13 +536,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         const credential = GoogleAuthProvider.credential(idToken);
         const credentials = await signInWithCredential(auth, credential);
-        
+
         // Fetch profile to check onboarding
         const userDocRef = doc(db, "users", credentials.user.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists() && (userDoc.data() as UserProfile).onboarded) {
           setScreen("dashboard");
           setActiveTab("home");
+        } else if (!userDoc.exists()) {
+          // Brand new account: route through the Plan step, same as email sign-up
+          setScreen("plan");
         } else {
           setScreen("onboarding");
         }
@@ -547,13 +566,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       const credentials = await signInWithPopup(auth, provider);
-      
+
       // Fetch profile to check onboarding
       const userDocRef = doc(db, "users", credentials.user.uid);
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists() && (userDoc.data() as UserProfile).onboarded) {
         setScreen("dashboard");
         setActiveTab("home");
+      } else if (!userDoc.exists()) {
+        // Brand new account: route through the Plan step, same as email sign-up
+        setScreen("plan");
       } else {
         setScreen("onboarding");
       }
@@ -570,6 +592,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsLocalOnly(false);
     setProfile(null);
     setSubscriptions([]);
+
+    // Also sign out of the native Google session, otherwise the Capacitor GoogleAuth
+    // plugin silently re-signs the user into the same cached account next time,
+    // skipping the account picker.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await GoogleAuth.signOut();
+      } catch (err) {
+        console.warn("GoogleAuth signOut error:", err);
+      }
+    }
+
     await signOut(auth);
     setScreen("welcome");
   };
@@ -643,7 +677,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStripeCheckoutSessionId(session.id);
           
           const isIframe = window.self !== window.top;
-          const isMobileOrCapacitor = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window as any).Capacitor !== undefined;
+          const isMobileOrCapacitor = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || Capacitor.isNativePlatform();
           
           if (!isIframe && !isMobileOrCapacitor) {
             // Only perform automatic silent redirection if NOT in an iframe AND NOT on mobile/Capacitor
@@ -831,6 +865,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         paymentError,
         stripeCheckoutSessionId,
         setPaymentError,
+        showQuickAdd,
+        setShowQuickAdd,
       }}
     >
       {children}

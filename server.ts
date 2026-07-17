@@ -272,94 +272,179 @@ async function startServer() {
     }
   });
 
-  // API Route to manually trigger/simulate checking all active subscriptions and sending reminders
+  // Shared helper: sends one FCM push to every device token registered for a user
+  // (at Firestore path users/{userId}/fcmTokens, written by src/lib/pushNotifications.ts).
+  // Extracted so the free-trial check below can reuse the exact same send logic as the
+  // renewal check without duplicating the token-fetch + Admin SDK send code a third time.
+  async function sendPushToUserTokens(userId: string, title: string, body: string): Promise<number> {
+    const tokensRef = collection(db, "users", userId, "fcmTokens");
+    const tokensSnap = await getDocs(tokensRef);
+    const tokens: string[] = [];
+    tokensSnap.forEach((tSnap) => {
+      const tData = tSnap.data();
+      if (tData.token) tokens.push(tData.token);
+    });
+
+    if (tokens.length === 0) return 0;
+
+    const adminSDK = getFirebaseAdmin();
+    if (adminSDK) {
+      const messaging = adminSDK.messaging();
+      const sendPromises = tokens.map((token) =>
+        messaging.send({
+          token,
+          notification: { title, body },
+          android: {
+            priority: "high",
+            notification: { sound: "default", channelId: "renewals_channel" },
+          },
+        })
+      );
+      await Promise.allSettled(sendPromises);
+    }
+    return tokens.length;
+  }
+
+  // Scans every active subscription for an upcoming renewal (based on nextChargeDate +
+  // reminderTiming) and sends a push for any that are due today. Extracted into its own
+  // function (previously inline in the route below) so the daily fallback scheduler
+  // further down can call the exact same check outside of an HTTP request.
+  async function runRenewalAlertsCheck(): Promise<{ checkedCount: number; alertsSent: any[] }> {
+    const subscriptionsRef = collectionGroup(db, "subscriptions");
+    const q = query(subscriptionsRef, where("status", "==", "active"));
+    const querySnapshot = await getDocs(q);
+
+    const alertsSent: any[] = [];
+    const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+    for (const docSnap of querySnapshot.docs) {
+      const sub = docSnap.data();
+      const userId = sub.userId;
+      if (!userId) continue;
+
+      // Skip gracefully if this subscription has no usable renewal date.
+      const chargeDate = new Date(sub.nextChargeDate);
+      if (isNaN(chargeDate.getTime())) continue;
+
+      // These case values must match ReminderTiming in src/types.ts exactly
+      // ("none" | "on_day" | "1_day_before" | "3_days_before" | "7_days_before") —
+      // the previous version of this switch used different strings ("same-day",
+      // "1-day", etc.) that never matched real data, so no alert ever fired.
+      let daysBefore = 0;
+      switch (sub.reminderTiming) {
+        case "on_day": daysBefore = 0; break;
+        case "1_day_before": daysBefore = 1; break;
+        case "3_days_before": daysBefore = 3; break;
+        case "7_days_before": daysBefore = 7; break;
+        default: continue; // "none" or unset — no reminder wanted for this subscription
+      }
+
+      const reminderDate = new Date(chargeDate);
+      reminderDate.setDate(chargeDate.getDate() - daysBefore);
+      const reminderDateStr = reminderDate.toISOString().split("T")[0];
+
+      // If today is the reminder date, trigger push! This works the same regardless of
+      // billingCycle (weekly/monthly/quarterly/yearly) since nextChargeDate already
+      // holds the concrete next charge date for any cycle type.
+      if (reminderDateStr === todayStr) {
+        const title = `Subscription Renewal Alert: ${sub.name}`;
+        const body = `Your ${sub.name} subscription (${sub.currency || "$"}${sub.amount}) renews on ${sub.nextChargeDate}. Please review.`;
+        const sentToTokens = await sendPushToUserTokens(userId, title, body);
+        if (sentToTokens > 0) {
+          console.log(`[Alerts Checker] Sent renewal alert for "${sub.name}" to ${sentToTokens} device(s) of user ${userId}.`);
+          alertsSent.push({ userId, subName: sub.name, nextChargeDate: sub.nextChargeDate, sentToTokens });
+        }
+      }
+    }
+
+    return { checkedCount: querySnapshot.size, alertsSent };
+  }
+
+  // Scans every active free-trial subscription for a trial end date (freeTrialEndDate)
+  // approaching within the subscription's own reminderTiming lead time, and sends a
+  // distinct "trial ending" push. Kept separate from runRenewalAlertsCheck because
+  // freeTrialEndDate and nextChargeDate are independent, separately user-entered fields
+  // (see AddEditScreen.tsx) — a trial's end date isn't guaranteed to equal its charge date.
+  async function runFreeTrialAlertsCheck(): Promise<{ checkedCount: number; alertsSent: any[] }> {
+    const subscriptionsRef = collectionGroup(db, "subscriptions");
+    const q = query(subscriptionsRef, where("status", "==", "active"));
+    const querySnapshot = await getDocs(q);
+
+    const alertsSent: any[] = [];
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    for (const docSnap of querySnapshot.docs) {
+      const sub = docSnap.data();
+      const userId = sub.userId;
+
+      // Skip gracefully: only relevant for free trials that actually have an end date set.
+      if (!userId || !sub.isFreeTrial || !sub.freeTrialEndDate) continue;
+
+      const trialEndDate = new Date(sub.freeTrialEndDate);
+      if (isNaN(trialEndDate.getTime())) continue; // Skip gracefully on a bad/missing date
+
+      // Reuses the subscription's own reminderTiming preference so trial-end alerts
+      // respect the same lead time the user already chose for renewal alerts.
+      let daysBefore = 0;
+      switch (sub.reminderTiming) {
+        case "on_day": daysBefore = 0; break;
+        case "1_day_before": daysBefore = 1; break;
+        case "3_days_before": daysBefore = 3; break;
+        case "7_days_before": daysBefore = 7; break;
+        default: continue;
+      }
+
+      const reminderDate = new Date(trialEndDate);
+      reminderDate.setDate(trialEndDate.getDate() - daysBefore);
+      const reminderDateStr = reminderDate.toISOString().split("T")[0];
+
+      if (reminderDateStr === todayStr) {
+        const title = `Free Trial Ending: ${sub.name}`;
+        const body = `Your ${sub.name} free trial ends on ${sub.freeTrialEndDate}. It will convert to a paid subscription unless cancelled.`;
+        const sentToTokens = await sendPushToUserTokens(userId, title, body);
+        if (sentToTokens > 0) {
+          console.log(`[Alerts Checker] Sent trial-ending alert for "${sub.name}" to ${sentToTokens} device(s) of user ${userId}.`);
+          alertsSent.push({ userId, subName: sub.name, freeTrialEndDate: sub.freeTrialEndDate, sentToTokens });
+        }
+      }
+    }
+
+    return { checkedCount: querySnapshot.size, alertsSent };
+  }
+
+  // API Route to manually trigger/simulate checking all active subscriptions and sending
+  // renewal reminders. Behavior is unchanged from before — it just now delegates to the
+  // extracted runRenewalAlertsCheck() function above instead of inlining the loop here.
   app.post("/api/notifications/trigger-alerts-check", async (req, res) => {
     try {
       console.log("[Alerts Checker] Starting automated alerts scan...");
-      const subscriptionsRef = collectionGroup(db, "subscriptions");
-      
-      // Get all active subscriptions
-      const q = query(subscriptionsRef, where("status", "==", "active"));
-      const querySnapshot = await getDocs(q);
-      
-      const alertsSent: any[] = [];
-      const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-      
-      for (const docSnap of querySnapshot.docs) {
-        const sub = docSnap.data();
-        const userId = sub.userId;
-        if (!userId) continue;
-
-        // Calculate reminder date based on nextChargeDate and reminderTiming
-        const chargeDate = new Date(sub.nextChargeDate);
-        if (isNaN(chargeDate.getTime())) continue;
-
-        let daysBefore = 0;
-        switch (sub.reminderTiming) {
-          case "same-day": daysBefore = 0; break;
-          case "1-day": daysBefore = 1; break;
-          case "2-days": daysBefore = 2; break;
-          case "3-days": daysBefore = 3; break;
-          case "7-days": daysBefore = 7; break;
-          default: continue; // No reminders set
-        }
-
-        const reminderDate = new Date(chargeDate);
-        reminderDate.setDate(chargeDate.getDate() - daysBefore);
-        const reminderDateStr = reminderDate.toISOString().split("T")[0];
-
-        // If today is the reminder date, trigger push!
-        if (reminderDateStr === todayStr) {
-          const title = `Subscription Renewal Alert: ${sub.name}`;
-          const body = `Your ${sub.name} subscription (${sub.currency || "$"}${sub.amount}) renews on ${sub.nextChargeDate}. Please review.`;
-
-          // Fetch tokens for this user
-          const tokensRef = collection(db, "users", userId, "fcmTokens");
-          const tokensSnap = await getDocs(tokensRef);
-          const tokens: string[] = [];
-          tokensSnap.forEach((tSnap) => {
-            const tData = tSnap.data();
-            if (tData.token) tokens.push(tData.token);
-          });
-
-          if (tokens.length > 0) {
-            console.log(`[Alerts Checker] Found ${tokens.length} tokens for user ${userId}. Sending push...`);
-            const adminSDK = getFirebaseAdmin();
-            if (adminSDK) {
-              const messaging = adminSDK.messaging();
-              const sendPromises = tokens.map((token) => {
-                return messaging.send({
-                  token,
-                  notification: { title, body },
-                  android: {
-                    priority: "high",
-                    notification: {
-                      sound: "default",
-                      channelId: "renewals_channel",
-                    },
-                  },
-                });
-              });
-              await Promise.allSettled(sendPromises);
-            }
-            alertsSent.push({
-              userId,
-              subName: sub.name,
-              nextChargeDate: sub.nextChargeDate,
-              sentToTokens: tokens.length,
-            });
-          }
-        }
-      }
-
+      const { checkedCount, alertsSent } = await runRenewalAlertsCheck();
       res.json({
         success: true,
-        checkedCount: querySnapshot.size,
+        checkedCount,
         alertsSentCount: alertsSent.length,
         alertsSent,
       });
     } catch (error: any) {
       console.error("[Alerts Checker] Error during alert checking:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // API Route to manually trigger a free-trial-ending scan, mirroring the renewal route
+  // above. Exposed separately so it can be tested/invoked independently if needed.
+  app.post("/api/notifications/trigger-trial-alerts-check", async (req, res) => {
+    try {
+      console.log("[Trial Alerts Checker] Starting free-trial alerts scan...");
+      const { checkedCount, alertsSent } = await runFreeTrialAlertsCheck();
+      res.json({
+        success: true,
+        checkedCount,
+        alertsSentCount: alertsSent.length,
+        alertsSent,
+      });
+    } catch (error: any) {
+      console.error("[Trial Alerts Checker] Error during trial alert checking:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -503,6 +588,34 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+
+    // Daily fallback reminder scheduler. Nothing previously called
+    // /api/notifications/trigger-alerts-check on any schedule, so renewal/trial alerts
+    // only ever fired if someone hit that route by hand. This runs both checks once on
+    // startup (catches anything missed while the server was down) and then every 24h
+    // for as long as this process stays alive, as an in-process fallback.
+    //
+    // Caveat: this only re-checks daily while the server process is actually running.
+    // If this is deployed to a Cloud Run service that scales to zero when idle (as
+    // documented for this project), the process — and this interval — stops between
+    // requests, so a Cloud Scheduler job hitting trigger-alerts-check on a fixed daily
+    // schedule is still the reliable option for production. Not set up automatically
+    // here since it provisions new cloud infrastructure.
+    const runDailyFallbackChecks = async () => {
+      try {
+        const renewalResult = await runRenewalAlertsCheck();
+        const trialResult = await runFreeTrialAlertsCheck();
+        console.log(
+          `[Daily Fallback Check] Renewals: ${renewalResult.alertsSent.length}/${renewalResult.checkedCount} alerted. ` +
+          `Trials: ${trialResult.alertsSent.length}/${trialResult.checkedCount} alerted.`
+        );
+      } catch (err) {
+        console.error("[Daily Fallback Check] Error:", err);
+      }
+    };
+
+    runDailyFallbackChecks();
+    setInterval(runDailyFallbackChecks, 24 * 60 * 60 * 1000);
   });
 }
 

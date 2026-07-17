@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { PRESET_SERVICES, CATEGORIES, REMINDER_OPTIONS } from "../data";
 import { formatCurrency } from "../utils";
+import { findMerchantMatch, SUGGESTED_BILLING_CYCLES, MerchantMatch } from "../lib/merchantAutofill";
 import { ChevronLeft, Save, X, Sparkles, AlertCircle, Info } from "lucide-react";
 import { Subscription, SubscriptionCategory, BillingCycle, ReminderTiming } from "../types";
 
@@ -36,6 +37,11 @@ export default function AddEditScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Merchant autofill suggestion (src/lib/merchantAutofill.ts) — purely additive UI
+  // state. It never mutates name/amount/category/billingCycle on its own; the user
+  // must tap "Apply" on the banner below, so it can't clobber anything they've typed.
+  const [autofillSuggestion, setAutofillSuggestion] = useState<MerchantMatch | null>(null);
+
   // Load existing values if in Edit Mode
   useEffect(() => {
     if (isEditMode && editingSub) {
@@ -48,6 +54,7 @@ export default function AddEditScreen() {
       setReminderTiming(editingSub.reminderTiming);
       setCategory(editingSub.category);
       setNotes(editingSub.notes || "");
+      setAutofillSuggestion(null);
     } else {
       // Clear form for Add Mode
       setName("");
@@ -62,6 +69,7 @@ export default function AddEditScreen() {
       setReminderTiming("1_day_before");
       setCategory("Streaming");
       setNotes("");
+      setAutofillSuggestion(null);
     }
   }, [isEditMode, editingSub]);
 
@@ -122,7 +130,6 @@ export default function AddEditScreen() {
 
       if (isEditMode) {
         await editSubscription(selectedSubscriptionId!, fields);
-        setSelectedSubId(null);
         setScreen("details");
       } else {
         await addSubscription(fields);
@@ -206,7 +213,7 @@ export default function AddEditScreen() {
               </p>
               
               <div className="flex gap-2 overflow-x-auto py-1.5 -mx-1 px-1 scrollbar-thin">
-                {PRESET_SERVICES.slice(0, 10).map((p) => (
+                {PRESET_SERVICES.map((p) => (
                   <button
                     id={`preset-btn-${p.name.replace(/\s+/g, '-').toLowerCase()}`}
                     key={p.name}
@@ -239,11 +246,50 @@ export default function AddEditScreen() {
                   id="addedit-name-input"
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setName(value);
+                    // Merchant autofill: only suggest in Add mode (never in Edit mode,
+                    // so opening an existing subscription can't surface an unrelated
+                    // suggestion banner over already-saved data).
+                    setAutofillSuggestion(isEditMode ? null : findMerchantMatch(value));
+                  }}
                   placeholder="e.g. Netflix Premium"
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-2 px-3.5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-300 font-sans shadow-xs transition-colors"
                   required
                 />
+                {/* Non-intrusive merchant-autofill suggestion — informational until the
+                    user explicitly taps "Apply"; dismissible; never blocks typing/submit. */}
+                {autofillSuggestion && (
+                  <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 animate-fade-in">
+                    <span className="text-[10px] text-slate-600 font-mono leading-snug">
+                      Matched <strong className="text-slate-900">{autofillSuggestion.matchedName}</strong> — {autofillSuggestion.category}, {autofillSuggestion.billingCycle}, {formatCurrency(autofillSuggestion.amount)}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        id="addedit-autofill-apply-btn"
+                        type="button"
+                        onClick={() => {
+                          setAmount(autofillSuggestion.amount.toString());
+                          setBillingCycle(autofillSuggestion.billingCycle);
+                          setCategory(autofillSuggestion.category);
+                          setAutofillSuggestion(null);
+                        }}
+                        className="text-[10px] font-mono font-bold text-slate-900 underline cursor-pointer"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        id="addedit-autofill-dismiss-btn"
+                        type="button"
+                        onClick={() => setAutofillSuggestion(null)}
+                        className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Price / Cycle Grid */}
@@ -277,6 +323,27 @@ export default function AddEditScreen() {
                     <option value="quarterly">Quarterly</option>
                     <option value="yearly">Yearly</option>
                   </select>
+                  {/* Optional suggested-cycle quick-select — purely a shortcut for the
+                      dropdown above, which remains the actual source of truth for
+                      billingCycle. Clicking a chip just calls the same setBillingCycle
+                      the dropdown uses; nothing else about the field changes. */}
+                  <div className="flex gap-1">
+                    {SUGGESTED_BILLING_CYCLES.map((opt) => (
+                      <button
+                        id={`addedit-cycle-suggest-${opt.value}`}
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setBillingCycle(opt.value)}
+                        className={`flex-1 py-1 text-[9px] font-mono font-bold rounded-md border cursor-pointer transition-colors ${
+                          billingCycle === opt.value
+                            ? "bg-slate-900 text-white border-slate-900"
+                            : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
