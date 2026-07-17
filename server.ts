@@ -4,7 +4,8 @@ import fs from "fs";
 import Stripe from "stripe";
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, doc, updateDoc, collection, getDocs, collectionGroup, query, where } from "firebase/firestore";
-import admin from "firebase-admin";
+import { initializeApp as initializeAdminApp, cert as adminCert } from "firebase-admin/app";
+import { getMessaging, Messaging } from "firebase-admin/messaging";
 import dotenv from "dotenv";
 
 // Load environment variables from .env file
@@ -40,18 +41,30 @@ async function grantPremiumForUserInFirebase(uid: string) {
   }
 }
 
-// Lazy-initialized Firebase Admin SDK
-let adminApp: any = null;
-function getFirebaseAdmin(): any {
-  if (adminApp) return adminApp;
+// Lazy-initialized Firebase Admin SDK messaging client.
+//
+// BUG FIX: this previously called admin.credential.cert(...) and app.messaging()
+// (the classic firebase-admin namespaced API), but the installed firebase-admin
+// version (14.x) only ships the newer modular API — there is no `.credential`
+// property and no `.messaging()` method on the app instance anymore. That mismatch
+// made every call throw "Cannot read properties of undefined (reading 'cert')",
+// which was silently swallowed by the catch block below, so getFirebaseAdmin()
+// always returned null and every push notification route quietly fell back to
+// Demo Mode even with FIREBASE_SERVICE_ACCOUNT_JSON correctly configured. Fixed by
+// using firebase-admin/app's cert()/initializeApp() and firebase-admin/messaging's
+// getMessaging(), which is the supported API for this version.
+let adminMessaging: Messaging | null = null;
+function getFirebaseAdmin(): Messaging | null {
+  if (adminMessaging) return adminMessaging;
 
   const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (serviceAccountStr) {
     try {
       const serviceAccount = JSON.parse(serviceAccountStr);
-      adminApp = (admin as any).initializeApp({
-        credential: (admin as any).credential.cert(serviceAccount),
+      const adminApp = initializeAdminApp({
+        credential: adminCert(serviceAccount),
       }, "admin-app");
+      adminMessaging = getMessaging(adminApp);
       console.log("[Firebase Admin] Successfully initialized Firebase Admin SDK");
     } catch (err) {
       console.error("[Firebase Admin] Error parsing service account JSON:", err);
@@ -59,7 +72,7 @@ function getFirebaseAdmin(): any {
   } else {
     console.log("[Firebase Admin] No FIREBASE_SERVICE_ACCOUNT_JSON found in environment. FCM notifications will run in Demo/Log mode.");
   }
-  return adminApp;
+  return adminMessaging;
 }
 
 // Lazy-initialized Stripe instance
@@ -230,9 +243,8 @@ async function startServer() {
       console.log(`[FCM Notification] Sending alert to ${tokens.length} devices of user ${userId}: "${title}"`);
 
       // 2. Try sending using Admin SDK
-      const adminSDK = getFirebaseAdmin();
-      if (adminSDK) {
-        const messaging = adminSDK.messaging();
+      const messaging = getFirebaseAdmin();
+      if (messaging) {
         const sendPromises = tokens.map((token) => {
           return messaging.send({
             token,
@@ -287,9 +299,8 @@ async function startServer() {
 
     if (tokens.length === 0) return 0;
 
-    const adminSDK = getFirebaseAdmin();
-    if (adminSDK) {
-      const messaging = adminSDK.messaging();
+    const messaging = getFirebaseAdmin();
+    if (messaging) {
       const sendPromises = tokens.map((token) =>
         messaging.send({
           token,
