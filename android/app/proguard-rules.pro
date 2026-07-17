@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Capacitor's JS<->native bridge resolves plugins and their @PluginMethod-annotated
+# methods via reflection at runtime, so they must survive shrinking/obfuscation.
+-keep class com.getcapacitor.** { *; }
+-keepclassmembers class * extends com.getcapacitor.Plugin {
+    @com.getcapacitor.annotation.CapacitorPlugin <methods>;
+    @com.getcapacitor.PluginMethod <methods>;
+}
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }

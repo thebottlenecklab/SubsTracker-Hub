@@ -7,3 +7,11 @@ coverage/
 .env*
 !.env.example
 stripe-test-keys.json
+env-vars.deploy.yaml
+
+# Android release signing — never commit the keystore or its credentials
+android/keystore.properties
+android/app/*.keystore
+android/app/*.jks
+*.keystore
+*.jks

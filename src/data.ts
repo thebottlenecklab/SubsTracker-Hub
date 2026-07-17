@@ -27,25 +27,66 @@ export const PRESET_SERVICES: PresetService[] = [
   { name: "YouTube Premium", amount: 13.99, category: "Streaming", billingCycle: "monthly" },
   { name: "Disney+", amount: 9.99, category: "Streaming", billingCycle: "monthly" },
   { name: "Apple One", amount: 19.95, category: "Streaming", billingCycle: "monthly" },
-  
+  { name: "Hulu", amount: 9.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Max (HBO Max)", amount: 16.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Paramount+", amount: 12.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Peacock Premium", amount: 7.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Apple TV+", amount: 9.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Amazon Music Unlimited", amount: 10.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Audible", amount: 14.95, category: "Streaming", billingCycle: "monthly" },
+  { name: "YouTube TV", amount: 82.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "Crunchyroll", amount: 7.99, category: "Streaming", billingCycle: "monthly" },
+  { name: "ESPN+", amount: 11.99, category: "Streaming", billingCycle: "monthly" },
+
   // Software / AI
   { name: "ChatGPT Plus", amount: 20.00, category: "Software", billingCycle: "monthly" },
   { name: "GitHub Copilot", amount: 10.00, category: "Software", billingCycle: "monthly" },
   { name: "Adobe Creative Cloud", amount: 54.99, category: "Software", billingCycle: "monthly" },
   { name: "Figma Professional", amount: 15.00, category: "Software", billingCycle: "monthly" },
   { name: "Notion Plus", amount: 10.00, category: "Software", billingCycle: "monthly" },
+  { name: "Microsoft 365", amount: 6.99, category: "Software", billingCycle: "monthly" },
+  { name: "Dropbox Plus", amount: 11.99, category: "Software", billingCycle: "monthly" },
+  { name: "Canva Pro", amount: 12.99, category: "Software", billingCycle: "monthly" },
+  { name: "Grammarly Premium", amount: 12.00, category: "Software", billingCycle: "monthly" },
+  { name: "1Password", amount: 2.99, category: "Software", billingCycle: "monthly" },
+  { name: "Claude Pro", amount: 20.00, category: "Software", billingCycle: "monthly" },
+  { name: "Perplexity Pro", amount: 20.00, category: "Software", billingCycle: "monthly" },
+  { name: "Zoom Pro", amount: 15.99, category: "Software", billingCycle: "monthly" },
 
   // Fitness
   { name: "Planet Fitness", amount: 24.99, category: "Fitness", billingCycle: "monthly" },
   { name: "Peloton App", amount: 12.99, category: "Fitness", billingCycle: "monthly" },
   { name: "ClassPass", amount: 49.00, category: "Fitness", billingCycle: "monthly" },
+  { name: "Strava", amount: 11.99, category: "Fitness", billingCycle: "monthly" },
+  { name: "Whoop", amount: 24.00, category: "Fitness", billingCycle: "monthly" },
+  { name: "Fitbit Premium", amount: 9.99, category: "Fitness", billingCycle: "monthly" },
+  { name: "Calm", amount: 14.99, category: "Fitness", billingCycle: "monthly" },
+  { name: "Headspace", amount: 12.99, category: "Fitness", billingCycle: "monthly" },
+  { name: "MyFitnessPal Premium", amount: 19.99, category: "Fitness", billingCycle: "monthly" },
 
-  // Family & Utilities
+  // Family & Shopping
   { name: "Amazon Prime", amount: 14.99, category: "Family", billingCycle: "monthly" },
   { name: "Costco Gold Star", amount: 65.00, category: "Family", billingCycle: "yearly" },
+  { name: "Nintendo Switch Online", amount: 19.99, category: "Family", billingCycle: "yearly" },
+  { name: "Walmart+", amount: 12.95, category: "Family", billingCycle: "monthly" },
+  { name: "Instacart+", amount: 9.99, category: "Family", billingCycle: "monthly" },
+  { name: "DoorDash DashPass", amount: 9.99, category: "Family", billingCycle: "monthly" },
+  { name: "Uber One", amount: 9.99, category: "Family", billingCycle: "monthly" },
+  { name: "Sam's Club Membership", amount: 55.00, category: "Family", billingCycle: "yearly" },
+
+  // Utilities & Cloud
   { name: "Google One (100GB)", amount: 1.99, category: "Utility", billingCycle: "monthly" },
   { name: "iCloud+ (200GB)", amount: 2.99, category: "Utility", billingCycle: "monthly" },
-  { name: "Nintendo Switch Online", amount: 19.99, category: "Family", billingCycle: "yearly" },
+  { name: "Google Workspace", amount: 6.00, category: "Utility", billingCycle: "monthly" },
+  { name: "Backblaze Backup", amount: 9.00, category: "Utility", billingCycle: "monthly" },
+
+  // Finance & News
+  { name: "The New York Times", amount: 17.00, category: "Finance", billingCycle: "monthly" },
+  { name: "The Wall Street Journal", amount: 38.99, category: "Finance", billingCycle: "monthly" },
+  { name: "Bloomberg", amount: 34.99, category: "Finance", billingCycle: "monthly" },
+  { name: "YNAB (You Need A Budget)", amount: 14.99, category: "Finance", billingCycle: "monthly" },
+  { name: "Experian Premium", amount: 24.99, category: "Finance", billingCycle: "monthly" },
+  { name: "LifeLock", amount: 11.99, category: "Finance", billingCycle: "monthly" },
 ];
 
 export const CATEGORIES: { value: SubscriptionCategory; label: string; color: string; icon: string }[] = [

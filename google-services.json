@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "409244064662-djccete3i5b415gu6meak31cnp4eur52.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.substracker.hub",
+            "certificate_hash": "8c1135e75c3544333e29583f5a23ba1e441dabd7"
+          }
+        },
+        {
           "client_id": "409244064662-665g3ekdevig3mncuel7jgjfqhl83aba.apps.googleusercontent.com",
           "client_type": 3
         }

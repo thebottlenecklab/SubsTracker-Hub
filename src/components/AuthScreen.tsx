@@ -377,7 +377,7 @@ export default function AuthScreen() {
           Skip and run local-only (No account required)
         </button>
         <span className="text-[10px] text-slate-400 leading-tight font-mono max-w-xs">
-          Note: Local-only data is stored on this browser. It will be cleared if you wipe your browsing cache.
+          Note: Local-only data is stored on this device only. It will be lost if you clear the app's storage or reinstall it.
         </span>
       </div>
     </div>
