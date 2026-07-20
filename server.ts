@@ -490,12 +490,20 @@ async function startServer() {
       // If requested from a mobile wrapper APK or local-only scheme (capacitor://, file://, localhost, etc.)
       // replace hostUrl with the public Cloud Run server's HTTPS URL to ensure Stripe doesn't crash on invalid redirect schemes,
       // and redirecting works smoothly inside the default web browser.
+      //
+      // BUG FIX: this previously only matched "http://localhost" (and 127.0.0.1 over
+      // http), but Capacitor's Android WebView serves the bundled app from
+      // "https://localhost" (HTTPS, not HTTP) — that slipped past every check here, so
+      // Stripe's post-payment redirect pointed the phone's browser at an unreachable
+      // https://localhost URL ("connection refused"), even though the payment itself
+      // succeeded. Switched to substring checks so the scheme (http/https) no longer
+      // matters.
       if (
         !hostUrl ||
-        hostUrl.startsWith("http://localhost") ||
+        hostUrl.includes("localhost") ||
+        hostUrl.includes("127.0.0.1") ||
         hostUrl.startsWith("capacitor://") ||
         hostUrl.startsWith("file://") ||
-        hostUrl.startsWith("http://127.0.0.1") ||
         hostUrl.startsWith("ionic://") ||
         hostUrl.startsWith("chrome-extension://")
       ) {
