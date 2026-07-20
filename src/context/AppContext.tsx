@@ -649,6 +649,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           userId: activeProfile.uid,
           userEmail: activeProfile.email || "sandbox@example.com",
           appUrl: window.location.origin,
+          // Charge in the user's detected/preferred currency instead of always USD —
+          // the server resolves this against its own price table and falls back to
+          // USD for anything unrecognized.
+          currency: activeProfile.currency || getAutoDetectedCurrency(),
         }),
       });
 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { downloadCSV, downloadPDF, downloadJSON, getAutoDetectedCurrency, getApiUrl } from "../utils";
+import { downloadCSV, downloadPDF, downloadJSON, getAutoDetectedCurrency, getApiUrl, getPremiumPrice } from "../utils";
 import {
   LogOut, Shield, Download, Upload, RefreshCw, Key, CreditCard,
   Trash2, ShieldCheck, Check, AlertCircle, FileText, FileDown, HelpCircle, UserCheck,
@@ -21,6 +21,10 @@ export default function SettingsScreen() {
     setScreen,
     setProfileField
   } = useApp();
+
+  // Same currency the checkout request itself will send (see unlockPremium in
+  // AppContext.tsx), so the price shown here always matches what actually gets charged.
+  const premiumPrice = getPremiumPrice(profile?.currency || getAutoDetectedCurrency());
 
   const [importJson, setImportJson] = useState<string>("");
   const [showImportArea, setShowImportArea] = useState<boolean>(false);
@@ -141,7 +145,7 @@ export default function SettingsScreen() {
               className="w-full bg-slate-900 text-white py-2.5 px-4 font-display font-bold text-xs rounded-xl shadow-sm hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
             >
               <CreditCard size={12} />
-              Unlock Premium Lifetime ($19.99)
+              Unlock Premium Lifetime ({premiumPrice.display})
             </button>
           ) : null}
 

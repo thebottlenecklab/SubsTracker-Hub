@@ -43,6 +43,44 @@ export function getAutoDetectedCurrency(): string {
 }
 
 /**
+ * Lifetime Premium unlock price per supported currency, in minor units (cents).
+ * A fixed per-currency table (rather than live FX conversion) avoids depending on an
+ * external exchange-rate API and gives predictable, intentional price points per
+ * market instead of a raw numeric conversion of the USD price.
+ *
+ * IMPORTANT: this table is duplicated in server.ts, which actually creates the Stripe
+ * checkout session and can't share this module (client/server are separate bundles in
+ * this project — server.ts already duplicates other client-side constants like the
+ * Firebase config for the same reason). Keep both in sync when changing prices.
+ */
+export const PREMIUM_PRICE_BY_CURRENCY: Record<string, number> = {
+  USD: 799,  // $7.99
+  CAD: 1099, // C$10.99
+  EUR: 749,  // €7.49
+  GBP: 649,  // £6.49
+  AUD: 1199, // A$11.99
+};
+
+export const DEFAULT_PREMIUM_CURRENCY = "USD";
+
+/**
+ * Resolves the lifetime Premium price for a given currency code, falling back to USD
+ * if the currency isn't in PREMIUM_PRICE_BY_CURRENCY (e.g. an unsupported currency
+ * detected from an unusual device locale). Returns the raw minor-unit amount (what
+ * Stripe expects) alongside a locale-formatted display string for UI labels, so the
+ * price shown to the user always matches what actually gets charged.
+ */
+export function getPremiumPrice(currency?: string): { currency: string; amountMinor: number; display: string } {
+  const resolvedCurrency = currency && PREMIUM_PRICE_BY_CURRENCY[currency] ? currency : DEFAULT_PREMIUM_CURRENCY;
+  const amountMinor = PREMIUM_PRICE_BY_CURRENCY[resolvedCurrency];
+  return {
+    currency: resolvedCurrency,
+    amountMinor,
+    display: formatCurrency(amountMinor / 100, resolvedCurrency),
+  };
+}
+
+/**
  * Formats a number as the user's preferred or detected local currency.
  */
 export function formatCurrency(amount: number, overrideCurrency?: string): string {

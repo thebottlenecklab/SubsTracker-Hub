@@ -1,10 +1,14 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
 import { PLAN_COMPARISON } from "../data";
+import { getPremiumPrice, getAutoDetectedCurrency } from "../utils";
 import { Check, X, ShieldCheck, CreditCard, ChevronRight } from "lucide-react";
 
 export default function PlanScreen() {
   const { unlockPremium, setScreen, profile, setProfileField, paymentError, clearSandboxParams } = useApp();
+  // Same currency the checkout request itself will send (see unlockPremium in
+  // AppContext.tsx), so the price shown here always matches what actually gets charged.
+  const premiumPrice = getPremiumPrice(profile?.currency || getAutoDetectedCurrency());
 
   const handleStartFree = async () => {
     // If user chooses free plan, just proceed to onboarding
@@ -70,7 +74,7 @@ export default function PlanScreen() {
             <p className="text-xs text-slate-500 font-sans">One-time purchase. Free forever after.</p>
             
             <div className="flex items-baseline gap-1 my-2">
-              <span className="font-mono font-extrabold text-3xl text-slate-900">$19.99</span>
+              <span className="font-mono font-extrabold text-3xl text-slate-900">{premiumPrice.display}</span>
               <span className="text-xs text-slate-500 font-mono">one-time payment</span>
             </div>
 

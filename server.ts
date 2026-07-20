@@ -142,6 +142,28 @@ function getStripeInstance(): Stripe | null {
 // In-memory tracker for demo sessions to simulate status checks
 const demoSessions = new Map<string, { userId: string; email: string; status: string }>();
 
+// Lifetime Premium unlock price per supported currency, in minor units (cents).
+// Duplicated from src/utils.ts's PREMIUM_PRICE_BY_CURRENCY — client and server are
+// separate bundles in this project (server.ts already duplicates the Firebase config
+// the same way), so this can't be a shared import. Keep both in sync when changing
+// prices. A fixed table avoids depending on a live exchange-rate API.
+const PREMIUM_PRICE_BY_CURRENCY: Record<string, number> = {
+  USD: 799,  // $7.99
+  CAD: 1099, // C$10.99
+  EUR: 749,  // €7.49
+  GBP: 649,  // £6.49
+  AUD: 1199, // A$11.99
+};
+const DEFAULT_PREMIUM_CURRENCY = "USD";
+
+// Resolves the requested currency against PREMIUM_PRICE_BY_CURRENCY, falling back to
+// USD for anything unsupported/missing so a client sending an unrecognized currency
+// code still gets a valid checkout session instead of an error.
+function resolvePremiumPrice(requestedCurrency?: string): { currency: string; amountMinor: number } {
+  const currency = requestedCurrency && PREMIUM_PRICE_BY_CURRENCY[requestedCurrency] ? requestedCurrency : DEFAULT_PREMIUM_CURRENCY;
+  return { currency, amountMinor: PREMIUM_PRICE_BY_CURRENCY[currency] };
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -484,8 +506,9 @@ async function startServer() {
   // API Route for creating Stripe Checkout Session
   app.post("/api/stripe/create-checkout-session", async (req, res) => {
     try {
-      const { userId, userEmail, appUrl } = req.body;
+      const { userId, userEmail, appUrl, currency } = req.body;
       let hostUrl = appUrl || process.env.APP_URL || `http://localhost:${PORT}`;
+      const premiumPrice = resolvePremiumPrice(currency);
 
       // If requested from a mobile wrapper APK or local-only scheme (capacitor://, file://, localhost, etc.)
       // replace hostUrl with the public Cloud Run server's HTTPS URL to ensure Stripe doesn't crash on invalid redirect schemes,
@@ -523,12 +546,12 @@ async function startServer() {
           line_items: [
             {
               price_data: {
-                currency: "usd",
+                currency: premiumPrice.currency.toLowerCase(),
                 product_data: {
                   name: "SubsTracker Premium (Lifetime)",
                   description: "Manual subscription entry, renewal reminders, trial tracking, sync, priority support, and more.",
                 },
-                unit_amount: 1999, // $19.99
+                unit_amount: premiumPrice.amountMinor,
               },
               quantity: 1,
             },

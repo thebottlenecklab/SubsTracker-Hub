@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { ShieldCheck, CreditCard, Lock, ChevronLeft, AlertCircle, Sparkles, CheckCircle2 } from "lucide-react";
-import { getApiUrl } from "../utils";
+import { getApiUrl, getPremiumPrice, getAutoDetectedCurrency } from "../utils";
 
 export default function StripeSandboxScreen() {
   const { stripeSandboxSession, profile, clearSandboxParams, verifyStripeSession, setPaymentCancel, setPaymentSuccess, setScreen } = useApp();
+  const premiumPrice = getPremiumPrice(profile?.currency || getAutoDetectedCurrency());
   
   const [cardNumber, setCardNumber] = useState<string>("");
   const [expiry, setExpiry] = useState<string>("");
@@ -156,7 +157,7 @@ export default function StripeSandboxScreen() {
           <span className="text-slate-400 font-mono text-[10px] uppercase">Payment Request</span>
           <div className="flex justify-between items-baseline">
             <span className="font-display font-bold text-base text-slate-950">SubsTracker Hub Premium (Lifetime)</span>
-            <span className="font-mono font-extrabold text-base text-slate-950">$19.99</span>
+            <span className="font-mono font-extrabold text-base text-slate-950">{premiumPrice.display}</span>
           </div>
           <p className="text-[10px] text-slate-400 leading-normal font-sans">
             One-time activation for unlimited subscriptions, priority alerts, multi-device sync, CSV data export, and lifetime cloud ledger updates.
@@ -250,7 +251,7 @@ export default function StripeSandboxScreen() {
                 className="w-full bg-[var(--color-emerald-500)] text-white py-3 px-4 font-display font-extrabold text-xs tracking-wider uppercase text-center rounded-xl hover:bg-[var(--color-emerald-600)] transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]"
               >
                 <Lock size={12} />
-                Authorize Payment ($19.99)
+                Authorize Payment ({premiumPrice.display})
               </button>
 
               <button
