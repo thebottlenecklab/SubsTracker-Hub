@@ -19,24 +19,43 @@ export function getApiUrl(path: string): string {
   return path;
 }
 
+// Maps a locale's region/country subtag to its most common currency. There is no
+// built-in Intl API that infers a currency from a locale — Intl.NumberFormat's
+// resolvedOptions().currency only echoes back whatever currency you explicitly pass
+// in as an *input*, it never derives one. This lookup table is the standard
+// workaround. Covers the primary market for every currency already offered in
+// Settings' Regional Preferences dropdown, plus the other major English/Euro markets
+// so common locales like en-GB, en-AU, de-DE, etc. resolve correctly.
+const REGION_TO_CURRENCY: Record<string, string> = {
+  US: "USD", CA: "CAD", GB: "GBP", AU: "AUD", NZ: "NZD",
+  DE: "EUR", FR: "EUR", ES: "EUR", IT: "EUR", NL: "EUR", IE: "EUR", PT: "EUR", AT: "EUR", BE: "EUR", FI: "EUR", GR: "EUR",
+  JP: "JPY", IN: "INR", BR: "BRL", ZA: "ZAR", SG: "SGD", CN: "CNY", CH: "CHF", MX: "MXN",
+  SE: "SEK", NO: "NOK", DK: "DKK", AE: "AED", SA: "SAR", TR: "TRY", KR: "KRW",
+};
+
 /**
- * Dynamically detects currency from the user's browser location / locale settings.
+ * Detects currency from the user's browser/device locale.
+ *
+ * BUG FIX: this previously always returned "USD" for every user regardless of their
+ * actual locale — it tried Intl.NumberFormat().resolvedOptions().currency (which is
+ * always undefined without an explicit currency style) and then
+ * Intl.NumberFormat(locale, { currency: "USD" }).resolvedOptions().currency (which
+ * just echoes back the USD it was explicitly told to use; locale only affects
+ * formatting, not which currency gets picked). Now uses Intl.Locale to extract the
+ * region subtag (e.g. "CA" from "en-CA") and looks it up in REGION_TO_CURRENCY.
  */
 export function getAutoDetectedCurrency(): string {
   try {
-    const currency = new Intl.NumberFormat().resolvedOptions().currency;
-    if (currency) return currency;
-  } catch (e) {
-    // ignore
-  }
-
-  try {
     const locale = navigator.language || "en-US";
-    const formatter = new Intl.NumberFormat(locale, { style: "currency", currency: "USD" });
-    const resolved = formatter.resolvedOptions().currency;
-    if (resolved) return resolved;
+    // Intl.Locale.maximize() fills in a likely region even for a bare language tag
+    // (e.g. "en" -> "en-Latn-US"), so this still resolves something reasonable even
+    // when navigator.language doesn't include an explicit region.
+    const region = new Intl.Locale(locale).maximize().region;
+    if (region && REGION_TO_CURRENCY[region]) {
+      return REGION_TO_CURRENCY[region];
+    }
   } catch (e) {
-    // ignore
+    // Intl.Locale unsupported or locale parsing failed — fall through to default.
   }
 
   return "USD";
