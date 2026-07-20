@@ -142,26 +142,53 @@ function getStripeInstance(): Stripe | null {
 // In-memory tracker for demo sessions to simulate status checks
 const demoSessions = new Map<string, { userId: string; email: string; status: string }>();
 
-// Lifetime Premium unlock price per supported currency, in minor units (cents).
-// Duplicated from src/utils.ts's PREMIUM_PRICE_BY_CURRENCY — client and server are
-// separate bundles in this project (server.ts already duplicates the Firebase config
-// the same way), so this can't be a shared import. Keep both in sync when changing
-// prices. A fixed table avoids depending on a live exchange-rate API.
+// Lifetime Premium unlock price per currency, as the human-readable amount (e.g. 7.99
+// means $7.99; for JPY/KRW, see ZERO_DECIMAL_CURRENCIES below, 1200 means literally
+// ¥1200). Duplicated from src/utils.ts's PREMIUM_PRICE_BY_CURRENCY — client and server
+// are separate bundles in this project (server.ts already duplicates the Firebase
+// config the same way), so this can't be a shared import. Keep both in sync when
+// changing prices. Covers every currency offered in Settings' Regional Preferences
+// dropdown, so every currency a user can select actually gets used for the real
+// charge instead of silently falling back to USD.
 const PREMIUM_PRICE_BY_CURRENCY: Record<string, number> = {
-  USD: 799,  // $7.99
-  CAD: 1099, // C$10.99
-  EUR: 749,  // €7.49
-  GBP: 649,  // £6.49
-  AUD: 1199, // A$11.99
+  USD: 7.99,
+  CAD: 10.99,
+  EUR: 7.49,
+  GBP: 6.49,
+  JPY: 1200,
+  AUD: 11.99,
+  INR: 649,
+  BRL: 39.90,
+  ZAR: 149,
+  SGD: 10.99,
+  CNY: 49,
+  CHF: 7.49,
+  MXN: 149,
+  NZD: 12.99,
+  SEK: 79,
+  NOK: 79,
+  DKK: 54,
+  AED: 29,
+  SAR: 29,
+  TRY: 249,
+  KRW: 10000,
 };
 const DEFAULT_PREMIUM_CURRENCY = "USD";
 
+// Stripe's "zero-decimal" currencies (no cents/sub-unit) take unit_amount as the
+// whole-unit integer directly, unlike every other currency here where unit_amount is
+// in minor units (amount * 100). Must match src/utils.ts's ZERO_DECIMAL_CURRENCIES.
+const ZERO_DECIMAL_CURRENCIES = new Set(["JPY", "KRW"]);
+
 // Resolves the requested currency against PREMIUM_PRICE_BY_CURRENCY, falling back to
 // USD for anything unsupported/missing so a client sending an unrecognized currency
-// code still gets a valid checkout session instead of an error.
-function resolvePremiumPrice(requestedCurrency?: string): { currency: string; amountMinor: number } {
+// code still gets a valid checkout session instead of an error. Returns Stripe's
+// unit_amount already converted correctly for zero-decimal vs. normal currencies.
+function resolvePremiumPrice(requestedCurrency?: string): { currency: string; unitAmount: number } {
   const currency = requestedCurrency && PREMIUM_PRICE_BY_CURRENCY[requestedCurrency] ? requestedCurrency : DEFAULT_PREMIUM_CURRENCY;
-  return { currency, amountMinor: PREMIUM_PRICE_BY_CURRENCY[currency] };
+  const amount = PREMIUM_PRICE_BY_CURRENCY[currency];
+  const unitAmount = ZERO_DECIMAL_CURRENCIES.has(currency) ? Math.round(amount) : Math.round(amount * 100);
+  return { currency, unitAmount };
 }
 
 async function startServer() {
@@ -551,7 +578,7 @@ async function startServer() {
                   name: "SubsTracker Premium (Lifetime)",
                   description: "Manual subscription entry, renewal reminders, trial tracking, sync, priority support, and more.",
                 },
-                unit_amount: premiumPrice.amountMinor,
+                unit_amount: premiumPrice.unitAmount,
               },
               quantity: 1,
             },

@@ -43,10 +43,14 @@ export function getAutoDetectedCurrency(): string {
 }
 
 /**
- * Lifetime Premium unlock price per supported currency, in minor units (cents).
- * A fixed per-currency table (rather than live FX conversion) avoids depending on an
- * external exchange-rate API and gives predictable, intentional price points per
- * market instead of a raw numeric conversion of the USD price.
+ * Lifetime Premium unlock price per currency, as the actual human-readable amount —
+ * e.g. 7.99 means $7.99, and for JPY/KRW (see ZERO_DECIMAL_CURRENCIES below) 1200
+ * means literally ¥1200, not ¥12.00. Covers every currency offered in the "Default
+ * Currency" Regional Preferences dropdown (SettingsScreen.tsx), so every currency a
+ * user can select there actually gets used for the real Stripe charge, not just a
+ * handful of major ones falling back to USD. These are fixed, intentional round-number
+ * price points per market (not live FX conversion), so they avoid depending on an
+ * external exchange-rate API and can be tuned independently per region.
  *
  * IMPORTANT: this table is duplicated in server.ts, which actually creates the Stripe
  * checkout session and can't share this module (client/server are separate bundles in
@@ -54,29 +58,50 @@ export function getAutoDetectedCurrency(): string {
  * Firebase config for the same reason). Keep both in sync when changing prices.
  */
 export const PREMIUM_PRICE_BY_CURRENCY: Record<string, number> = {
-  USD: 799,  // $7.99
-  CAD: 1099, // C$10.99
-  EUR: 749,  // €7.49
-  GBP: 649,  // £6.49
-  AUD: 1199, // A$11.99
+  USD: 7.99,
+  CAD: 10.99,
+  EUR: 7.49,
+  GBP: 6.49,
+  JPY: 1200,
+  AUD: 11.99,
+  INR: 649,
+  BRL: 39.90,
+  ZAR: 149,
+  SGD: 10.99,
+  CNY: 49,
+  CHF: 7.49,
+  MXN: 149,
+  NZD: 12.99,
+  SEK: 79,
+  NOK: 79,
+  DKK: 54,
+  AED: 29,
+  SAR: 29,
+  TRY: 249,
+  KRW: 10000,
 };
 
 export const DEFAULT_PREMIUM_CURRENCY = "USD";
 
+// Stripe's "zero-decimal" currencies have no cents/sub-unit — the API expects the
+// whole-unit integer directly (e.g. unit_amount: 1200 for ¥1200), unlike every other
+// currency here where unit_amount is in minor units (amount * 100). Of the currencies
+// in PREMIUM_PRICE_BY_CURRENCY, only JPY and KRW fall into this category.
+export const ZERO_DECIMAL_CURRENCIES = new Set(["JPY", "KRW"]);
+
 /**
  * Resolves the lifetime Premium price for a given currency code, falling back to USD
- * if the currency isn't in PREMIUM_PRICE_BY_CURRENCY (e.g. an unsupported currency
- * detected from an unusual device locale). Returns the raw minor-unit amount (what
- * Stripe expects) alongside a locale-formatted display string for UI labels, so the
- * price shown to the user always matches what actually gets charged.
+ * if the currency isn't in PREMIUM_PRICE_BY_CURRENCY. Returns the human-readable
+ * amount alongside a locale-formatted display string for UI labels, so the price
+ * shown to the user always matches what actually gets charged.
  */
-export function getPremiumPrice(currency?: string): { currency: string; amountMinor: number; display: string } {
+export function getPremiumPrice(currency?: string): { currency: string; amount: number; display: string } {
   const resolvedCurrency = currency && PREMIUM_PRICE_BY_CURRENCY[currency] ? currency : DEFAULT_PREMIUM_CURRENCY;
-  const amountMinor = PREMIUM_PRICE_BY_CURRENCY[resolvedCurrency];
+  const amount = PREMIUM_PRICE_BY_CURRENCY[resolvedCurrency];
   return {
     currency: resolvedCurrency,
-    amountMinor,
-    display: formatCurrency(amountMinor / 100, resolvedCurrency),
+    amount,
+    display: formatCurrency(amount, resolvedCurrency),
   };
 }
 
